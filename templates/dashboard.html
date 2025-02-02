@@ -1,0 +1,104 @@
+<!-- templates/dashboard.html -->
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+  <h2 class="text-2xl font-bold mb-6 text-center">Dashboard</h2>
+  
+  <!-- Charts Section: Display charts side by side on md and larger screens -->
+  <div class="flex flex-col md:flex-row md:space-x-4 mb-8">
+    <!-- Cumulative Growth Chart Container -->
+    <div class="w-full md:w-1/2">
+      <canvas id="cumulativeChart"></canvas>
+    </div>
+    <!-- Breakdown Pie Chart Container -->
+    <div class="w-full md:w-1/2">
+      <canvas id="breakdownChart"></canvas>
+    </div>
+  </div>
+  
+  <!-- Additional KPIs for non-admin users -->
+  {% if extra_metrics %}
+  <div class="bg-white p-4 rounded shadow grid grid-cols-2 gap-4 text-center mb-8">
+    <div>
+      <p class="font-bold">Total Deposits</p>
+      <p>Rs {{ extra_metrics.total_deposits }}</p>
+    </div>
+    <div>
+      <p class="font-bold">Total Withdrawn</p>
+      <p>Rs {{ extra_metrics.total_withdrawn }}</p>
+    </div>
+    <div>
+      <p class="font-bold">Current Balance</p>
+      <p>Rs {{ extra_metrics.current_balance }}</p>
+    </div>
+    <div>
+      <p class="font-bold">ROI</p>
+      <p>{{ extra_metrics.roi|round(2) }}%</p>
+    </div>
+  </div>
+  {% endif %}
+  
+  <!-- Export Links -->
+  <div class="flex justify-center space-x-4 mb-8">
+    <a href="{{ url_for('export_transactions') }}" class="bg-green px-4 py-2 rounded hover:bg-accent text-white transition">Export Transactions CSV</a>
+    <a href="{{ url_for('export_trades') }}" class="bg-green px-4 py-2 rounded hover:bg-accent text-white transition">Export Trades CSV</a>
+  </div>
+  
+  <!-- Include Chart.js from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    // Parse chart data passed from Flask
+    const chartDates = {{ chart_dates|safe }};
+    const chartCumSum = {{ chart_cum_sum|safe }};
+    const depositTotal = {{ deposit_total }};
+    const tradeTotal = {{ trade_total }};
+    
+    // Cumulative Growth Line Chart
+    const ctxLine = document.getElementById('cumulativeChart').getContext('2d');
+    const cumulativeChart = new Chart(ctxLine, {
+      type: 'line',
+      data: {
+        labels: chartDates,
+        datasets: [{
+          label: 'Cumulative Growth',
+          data: chartCumSum,
+          borderColor: 'rgba(59, 130, 246, 1)', // Tailwind blue-500
+          backgroundColor: 'rgba(59, 130, 246, 0.2)',
+          fill: true,
+          tension: 0.3
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: 'top' }
+        },
+        scales: {
+          x: { display: true, title: { display: true, text: 'Date' } },
+          y: { display: true, title: { display: true, text: 'Amount (Rs)' } }
+        }
+      }
+    });
+    
+    // Breakdown Pie Chart
+    const ctxPie = document.getElementById('breakdownChart').getContext('2d');
+    const breakdownChart = new Chart(ctxPie, {
+      type: 'pie',
+      data: {
+        labels: ['Deposits', 'Trades/Withdrawals'],
+        datasets: [{
+          data: [depositTotal, tradeTotal],
+          backgroundColor: [
+            'rgba(59, 130, 246, 0.7)',  // Tailwind blue-500
+            'rgba(10, 165, 233, 0.7)'     // Tailwind cyan-400
+          ],
+          hoverOffset: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: 'bottom' } }
+      }
+    });
+  </script>
+{% endblock %}

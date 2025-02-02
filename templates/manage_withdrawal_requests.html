@@ -1,0 +1,37 @@
+<!-- templates/manage_withdrawal_requests.html -->
+{% extends "base.html" %}
+{% block title %}Manage Withdrawal Requests{% endblock %}
+{% block content %}
+  <h2 class="text-xl font-bold mb-4">Manage Withdrawal Requests</h2>
+  <div class="overflow-x-auto">
+    <table class="min-w-full bg-white">
+      <thead>
+        <tr class="text-center">
+          <th class="py-2 px-4 border">ID</th>
+          <th class="py-2 px-4 border">Contributor</th>
+          <th class="py-2 px-4 border">Request Date</th>
+          <th class="py-2 px-4 border">Amount</th>
+          <th class="py-2 px-4 border">Comment</th>
+          <th class="py-2 px-4 border">Status</th>
+          <th class="py-2 px-4 border">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for req in requests %}
+        <tr class="text-center">
+          <td class="py-2 px-4 border">{{ req.id }}</td>
+          <td class="py-2 px-4 border">{{ req.contributor }}</td>
+          <td class="py-2 px-4 border">{{ req.request_date }}</td>
+          <td class="py-2 px-4 border">{{ req.amount }}</td>
+          <td class="py-2 px-4 border">{{ req.comment }}</td>
+          <td class="py-2 px-4 border">{{ req.status }}</td>
+          <td class="py-2 px-4 border">
+            <a href="{{ url_for('approve_withdrawal', req_id=req.id) }}" class="text-green hover:underline">Approve</a> |
+            <a href="{{ url_for('reject_withdrawal', req_id=req.id) }}" class="text-red hover:underline">Reject</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

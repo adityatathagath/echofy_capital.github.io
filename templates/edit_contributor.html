@@ -1,0 +1,22 @@
+<!-- templates/edit_contributor.html -->
+{% extends "base.html" %}
+{% block title %}Edit Contributor{% endblock %}
+{% block content %}
+  <h2 class="text-xl font-bold mb-4 text-center">Edit Contributor</h2>
+  <form method="post" class="space-y-4 max-w-lg mx-auto">
+    <div>
+      <label class="block">Name:</label>
+      <input type="text" name="name" value="{{ contributor.name }}" class="w-full border border-black p-2 rounded">
+    </div>
+    <div>
+      <label class="block">Type:</label>
+      <select name="ctype" class="w-full border border-black p-2 rounded">
+        <option value="Friend" {% if contributor.type=='Friend' %}selected{% endif %}>Friend</option>
+        <option value="Family" {% if contributor.type=='Family' %}selected{% endif %}>Family</option>
+      </select>
+    </div>
+    <div>
+      <input type="submit" value="Save Changes" class="w-full bg-green text-white p-2 rounded hover:bg-cyan">
+    </div>
+  </form>
+{% endblock %}

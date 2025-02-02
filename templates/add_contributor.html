@@ -1,0 +1,38 @@
+<!-- templates/add_contributor.html -->
+{% extends "base.html" %}
+{% block title %}Add Contributor{% endblock %}
+{% block content %}
+  <h2 class="text-xl font-bold mb-4">Add Contributor &amp; Create Login</h2>
+  <form method="post" class="space-y-4 max-w-lg mx-auto">
+    <div>
+      <label class="block">Contributor Name:</label>
+      <input type="text" name="name" class="w-full border border-black p-2 rounded">
+    </div>
+    <div>
+      <label class="block">Type:</label>
+      <select name="ctype" class="w-full border border-black p-2 rounded">
+        <option value="Friend">Friend</option>
+        <option value="Family">Family</option>
+      </select>
+    </div>
+    <div>
+      <label class="block">Initial Deposit (Rs):</label>
+      <input type="text" name="deposit" class="w-full border border-black p-2 rounded">
+    </div>
+    <div>
+      <label class="block">Deposit Date:</label>
+      <input type="date" name="deposit_date" class="w-full border border-black p-2 rounded">
+    </div>
+    <div>
+      <label class="block">Login Username:</label>
+      <input type="text" name="login_username" class="w-full border border-black p-2 rounded">
+    </div>
+    <div>
+      <label class="block">Login Password:</label>
+      <input type="password" name="login_password" class="w-full border border-black p-2 rounded">
+    </div>
+    <div>
+      <input type="submit" value="Add Contributor" class="w-full bg-green text-white p-2 rounded hover:bg-cyan">
+    </div>
+  </form>
+{% endblock %}

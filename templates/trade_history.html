@@ -1,0 +1,44 @@
+<!-- templates/trade_history.html -->
+{% extends "base.html" %}
+{% block title %}Trade History{% endblock %}
+{% block content %}
+  <h2 class="text-xl font-bold mb-4 text-center">Trade History</h2>
+  <div class="overflow-x-auto">
+    <table class="min-w-full bg-white">
+      <thead>
+        <tr class="text-center">
+          <th class="py-2 px-4 border">Trade Date</th>
+          <th class="py-2 px-4 border">Asset</th>
+          <th class="py-2 px-4 border">PnL</th>
+          <th class="py-2 px-4 border">Charges</th>
+          <th class="py-2 px-4 border">Net PnL</th>
+          <th class="py-2 px-4 border">Commission</th>
+          <th class="py-2 px-4 border">Net Distributed</th>
+          <th class="py-2 px-4 border">Comment</th>
+          {% if role == "admin" %}
+          <th class="py-2 px-4 border">Actions</th>
+          {% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for trade in trades %}
+        <tr class="text-center">
+          <td class="py-2 px-4 border">{{ trade.trade_date }}</td>
+          <td class="py-2 px-4 border">{{ trade.asset }}</td>
+          <td class="py-2 px-4 border">{{ trade.pnl }}</td>
+          <td class="py-2 px-4 border">{{ trade.charges }}</td>
+          <td class="py-2 px-4 border">{{ trade.net_pnl }}</td>
+          <td class="py-2 px-4 border">{{ trade.commission }}</td>
+          <td class="py-2 px-4 border">{{ trade.net_profit_after_commission }}</td>
+          <td class="py-2 px-4 border">{{ trade.comment }}</td>
+          {% if role == "admin" %}
+          <td class="py-2 px-4 border">
+            <a href="{{ url_for('edit_trade', trade_id=trade.id) }}" class="text-blue hover:underline">Edit</a>
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

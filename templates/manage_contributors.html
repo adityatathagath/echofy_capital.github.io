@@ -1,0 +1,35 @@
+<!-- templates/manage_contributors.html -->
+{% extends "base.html" %}
+{% block title %}Manage Contributors{% endblock %}
+{% block content %}
+  <h2 class="text-xl font-bold mb-4 text-center">Manage Contributors</h2>
+  <div class="overflow-x-auto">
+    <table class="min-w-full bg-white">
+      <thead>
+        <tr class="text-center">
+          <th class="py-2 px-4 border">ID</th>
+          <th class="py-2 px-4 border">Name</th>
+          <th class="py-2 px-4 border">Type</th>
+          <th class="py-2 px-4 border">Login Username</th>
+          <th class="py-2 px-4 border">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for contrib in contributors %}
+        <tr class="text-center">
+          <td class="py-2 px-4 border">{{ contrib.id }}</td>
+          <td class="py-2 px-4 border">{{ contrib.name }}</td>
+          <td class="py-2 px-4 border">{{ contrib.type }}</td>
+          <td class="py-2 px-4 border">{{ contrib.login_username or "" }}</td>
+          <td class="py-2 px-4 border">
+            <a href="{{ url_for('edit_contributor', contrib_id=contrib.id) }}" class="text-blue hover:underline">Edit</a>
+            {% if not contrib.login_username %}
+              | <a href="{{ url_for('assign_credentials', contrib_id=contrib.id) }}" class="text-green hover:underline">Assign Credentials</a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

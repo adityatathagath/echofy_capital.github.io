@@ -1,0 +1,65 @@
+<!-- templates/detailed_summary.html -->
+{% extends "base.html" %}
+{% block title %}Detailed Summary{% endblock %}
+{% block content %}
+  <h2 class="text-xl font-bold mb-4 text-center">Detailed Summary</h2>
+  {% if session.get("role") == "admin" %}
+  <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+    {% for summary in summaries %}
+      <div class="border border-black rounded p-4 bg-white hover:bg-cyan cursor-pointer text-center" onclick="showSummary('{{ loop.index0 }}')">
+        <h3 class="font-bold">{{ summary.name }}</h3>
+        <p>Balance: Rs {{ summary.current_balance }}</p>
+        <p>Portfolio: {{ summary.portfolio_pct }}%</p>
+      </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <!-- Summary Details -->
+  <div id="summary-details">
+    {% for summary in summaries %}
+      <div class="summary-tile {% if session.get('role') == 'admin' %}hidden{% endif %}" data-index="{{ loop.index0 }}">
+        <h3 class="text-lg font-bold mb-2 text-center">{{ summary.name }} - Balance: Rs {{ summary.current_balance }} ({{ summary.portfolio_pct }}% of total)</h3>
+        <div class="overflow-x-auto">
+          <table class="min-w-full bg-white text-xs">
+            <thead>
+              <tr class="text-center">
+                <th class="py-1 px-2 border">Date</th>
+                <th class="py-1 px-2 border">Type</th>
+                <th class="py-1 px-2 border">Asset</th>
+                <th class="py-1 px-2 border">Amount</th>
+                <th class="py-1 px-2 border">Charges</th>
+                <th class="py-1 px-2 border">Comment</th>
+                <th class="py-1 px-2 border">Running Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for txn in summary.transactions %}
+                <tr class="text-center">
+                  <td class="py-1 px-2 border">{{ txn.date }}</td>
+                  <td class="py-1 px-2 border">{{ txn.type }}</td>
+                  <td class="py-1 px-2 border">{{ txn.asset }}</td>
+                  <td class="py-1 px-2 border">{{ txn.amount }}</td>
+                  <td class="py-1 px-2 border">{{ txn.allocated_charges }}</td>
+                  <td class="py-1 px-2 border">{{ txn.comment }}</td>
+                  <td class="py-1 px-2 border">{{ txn.running_total }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+  {% if session.get("role") == "admin" %}
+  <script>
+    // Show the first summary by default
+    document.querySelectorAll('.summary-tile')[0].classList.remove('hidden');
+    function showSummary(index) {
+      document.querySelectorAll('.summary-tile').forEach(tile => {
+        tile.classList.add('hidden');
+      });
+      document.querySelector(`.summary-tile[data-index="${index}"]`).classList.remove('hidden');
+    }
+  </script>
+  {% endif %}
+{% endblock %}

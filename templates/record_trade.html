@@ -1,0 +1,31 @@
+<!-- templates/record_trade.html -->
+{% extends "base.html" %}
+{% block title %}Record Trade{% endblock %}
+{% block content %}
+  <h2 class="text-xl font-bold mb-4">Record Trade</h2>
+  <form method="post" class="space-y-4 max-w-lg mx-auto">
+    <div>
+      <label class="block">Trade Date:</label>
+      <input type="date" name="trade_date" class="w-full border border-black p-2 rounded">
+    </div>
+    <div>
+      <label class="block">Asset Traded:</label>
+      <input type="text" name="asset" class="w-full border border-black p-2 rounded">
+    </div>
+    <div>
+      <label class="block">PnL (Rs):</label>
+      <input type="text" name="pnl" class="w-full border border-black p-2 rounded">
+    </div>
+    <div>
+      <label class="block">Charges (Rs):</label>
+      <input type="text" name="charges" class="w-full border border-black p-2 rounded">
+    </div>
+    <div>
+      <label class="block">Comments:</label>
+      <input type="text" name="comment" class="w-full border border-black p-2 rounded">
+    </div>
+    <div>
+      <input type="submit" value="Record Trade" class="w-full bg-green text-white p-2 rounded hover:bg-cyan">
+    </div>
+  </form>
+{% endblock %}

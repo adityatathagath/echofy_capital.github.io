@@ -1,0 +1,32 @@
+<!-- templates/notifications.html -->
+{% extends "base.html" %}
+{% block title %}Notifications{% endblock %}
+{% block content %}
+  <h2 class="text-xl font-bold mb-4">Notifications</h2>
+  <div class="overflow-x-auto">
+    <table class="min-w-full bg-white">
+      <thead>
+        <tr class="text-center">
+          <th class="py-2 px-4 border">Request Date</th>
+          <th class="py-2 px-4 border">Amount</th>
+          <th class="py-2 px-4 border">Comment</th>
+          <th class="py-2 px-4 border">Status</th>
+          <th class="py-2 px-4 border">Approved Date</th>
+          <th class="py-2 px-4 border">Admin Comment</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for req in requests %}
+        <tr class="text-center">
+          <td class="py-2 px-4 border">{{ req.request_date }}</td>
+          <td class="py-2 px-4 border">{{ req.amount }}</td>
+          <td class="py-2 px-4 border">{{ req.comment }}</td>
+          <td class="py-2 px-4 border">{{ req.status }}</td>
+          <td class="py-2 px-4 border">{{ req.approved_date or "" }}</td>
+          <td class="py-2 px-4 border">{{ req.admin_comment or "" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock %}

@@ -1,0 +1,15 @@
+<!-- templates/approve_withdrawal.html -->
+{% extends "base.html" %}
+{% block title %}Approve Withdrawal{% endblock %}
+{% block content %}
+  <h2 class="text-xl font-bold mb-4">Approve Withdrawal Request #{{ req_id }}</h2>
+  <form method="post" class="space-y-4 max-w-lg mx-auto">
+    <div>
+      <label class="block">Admin Comment (optional):</label>
+      <input type="text" name="admin_comment" class="w-full border border-black p-2 rounded">
+    </div>
+    <div>
+      <input type="submit" value="Approve" class="w-full bg-green text-white p-2 rounded hover:bg-cyan">
+    </div>
+  </form>
+{% endblock %}

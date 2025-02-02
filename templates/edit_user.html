@@ -1,0 +1,26 @@
+<!-- templates/edit_user.html -->
+{% extends "base.html" %}
+{% block title %}Edit User{% endblock %}
+{% block content %}
+  <h2 class="text-xl font-bold mb-4 text-center">Edit User</h2>
+  <form method="post" class="space-y-4 max-w-lg mx-auto">
+    <div>
+      <label class="block">Username:</label>
+      <input type="text" name="username" value="{{ user.username }}" class="w-full border border-black p-2 rounded">
+    </div>
+    <div>
+      <label class="block">Password:</label>
+      <input type="password" name="password" class="w-full border border-black p-2 rounded">
+    </div>
+    <div>
+      <label class="block">Role:</label>
+      <select name="role" class="w-full border border-black p-2 rounded">
+        <option value="admin" {% if user.role=='admin' %}selected{% endif %}>admin</option>
+        <option value="user" {% if user.role=='user' %}selected{% endif %}>user</option>
+      </select>
+    </div>
+    <div>
+      <input type="submit" value="Save Changes" class="w-full bg-green text-white p-2 rounded hover:bg-cyan">
+    </div>
+  </form>
+{% endblock %}

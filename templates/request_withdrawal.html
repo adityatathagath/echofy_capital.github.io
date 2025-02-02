@@ -1,0 +1,23 @@
+<!-- templates/request_withdrawal.html -->
+{% extends "base.html" %}
+{% block title %}Request Withdrawal{% endblock %}
+{% block content %}
+  <h2 class="text-xl font-bold mb-4">Request Withdrawal</h2>
+  <form method="post" class="space-y-4 max-w-lg mx-auto">
+    <div>
+      <label class="block">Request Date:</label>
+      <input type="date" name="request_date" class="w-full border border-black p-2 rounded">
+    </div>
+    <div>
+      <label class="block">Amount (Rs):</label>
+      <input type="text" name="amount" class="w-full border border-black p-2 rounded">
+    </div>
+    <div>
+      <label class="block">Comment:</label>
+      <input type="text" name="comment" class="w-full border border-black p-2 rounded">
+    </div>
+    <div>
+      <input type="submit" value="Submit Withdrawal Request" class="w-full bg-green text-white p-2 rounded hover:bg-cyan">
+    </div>
+  </form>
+{% endblock %}
