@@ -6,22 +6,22 @@
   <form method="post" class="space-y-4 max-w-lg mx-auto">
     {{ csrf_field() }}
     <div>
-      <label class="block">Username:</label>
-      <input type="text" name="username" class="w-full border border-black p-2 rounded" required>
+      <label class="form-label">Username:</label>
+      <input type="text" name="username" class="form-input" required>
     </div>
     <div>
-      <label class="block">Password:</label>
-      <input type="password" name="password" class="w-full border border-black p-2 rounded" required>
+      <label class="form-label">Password:</label>
+      <input type="password" name="password" class="form-input" required>
     </div>
     <div>
-      <label class="block">Role:</label>
-      <select name="role" class="w-full border border-black p-2 rounded">
+      <label class="form-label">Role:</label>
+      <select name="role" class="form-input">
         <option value="user">user</option>
         <option value="admin">admin</option>
       </select>
     </div>
     <div>
-      <input type="submit" value="Create User" class="w-full bg-green text-white p-2 rounded hover:bg-cyan">
+      <input type="submit" value="Create User" class="btn-primary">
     </div>
   </form>
 {% endblock %}

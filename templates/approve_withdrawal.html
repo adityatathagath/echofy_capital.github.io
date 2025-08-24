@@ -6,11 +6,11 @@
   <form method="post" class="space-y-4 max-w-lg mx-auto">
     {{ csrf_field() }}
     <div>
-      <label class="block">Admin Comment (optional):</label>
-      <input type="text" name="admin_comment" class="w-full border border-black p-2 rounded">
+      <label class="form-label">Admin Comment (optional):</label>
+      <input type="text" name="admin_comment" class="form-input">
     </div>
     <div>
-      <input type="submit" value="Approve" class="w-full bg-green text-white p-2 rounded hover:bg-cyan">
+      <input type="submit" value="Approve" class="btn-primary">
     </div>
   </form>
 {% endblock %}

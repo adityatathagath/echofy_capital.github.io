@@ -6,31 +6,31 @@
   <form method="post" class="space-y-4 max-w-lg mx-auto">
     {{ csrf_field() }}
     <div>
-      <label class="block">Date (YYYY-MM-DD):</label>
-      <input type="text" name="date" value="{{ txn.date }}" class="w-full border border-black p-2 rounded">
+      <label class="form-label">Date (YYYY-MM-DD):</label>
+      <input type="text" name="date" value="{{ txn.date }}" class="form-input">
     </div>
     <div>
-      <label class="block">Type (deposit/trade/withdrawal):</label>
-      <input type="text" name="type" value="{{ txn.type }}" class="w-full border border-black p-2 rounded">
+      <label class="form-label">Type (deposit/trade/withdrawal):</label>
+      <input type="text" name="type" value="{{ txn.type }}" class="form-input">
     </div>
     <div>
-      <label class="block">Amount (Rs):</label>
-      <input type="text" name="amount" value="{{ txn.amount }}" class="w-full border border-black p-2 rounded">
+      <label class="form-label">Amount (Rs):</label>
+      <input type="text" name="amount" value="{{ txn.amount }}" class="form-input">
     </div>
     <div>
-      <label class="block">Asset:</label>
-      <input type="text" name="asset" value="{{ txn.asset }}" class="w-full border border-black p-2 rounded">
+      <label class="form-label">Asset:</label>
+      <input type="text" name="asset" value="{{ txn.asset }}" class="form-input">
     </div>
     <div>
-      <label class="block">Allocated Charges (Rs):</label>
-      <input type="text" name="allocated_charges" value="{{ txn.allocated_charges }}" class="w-full border border-black p-2 rounded">
+      <label class="form-label">Allocated Charges (Rs):</label>
+      <input type="text" name="allocated_charges" value="{{ txn.allocated_charges }}" class="form-input">
     </div>
     <div>
-      <label class="block">Comment:</label>
-      <input type="text" name="comment" value="{{ txn.comment }}" class="w-full border border-black p-2 rounded">
+      <label class="form-label">Comment:</label>
+      <input type="text" name="comment" value="{{ txn.comment }}" class="form-input">
     </div>
     <div>
-      <input type="submit" value="Save Changes" class="w-full bg-green text-white p-2 rounded hover:bg-cyan">
+      <input type="submit" value="Save Changes" class="btn-primary">
     </div>
   </form>
 {% endblock %}

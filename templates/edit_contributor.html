@@ -6,18 +6,18 @@
   <form method="post" class="space-y-4 max-w-lg mx-auto">
     {{ csrf_field() }}
     <div>
-      <label class="block">Name:</label>
-      <input type="text" name="name" value="{{ contributor.name }}" class="w-full border border-black p-2 rounded">
+      <label class="form-label">Name:</label>
+      <input type="text" name="name" value="{{ contributor.name }}" class="form-input">
     </div>
     <div>
-      <label class="block">Type:</label>
-      <select name="ctype" class="w-full border border-black p-2 rounded">
+      <label class="form-label">Type:</label>
+      <select name="ctype" class="form-input">
         <option value="Friend" {% if contributor.type=='Friend' %}selected{% endif %}>Friend</option>
         <option value="Family" {% if contributor.type=='Family' %}selected{% endif %}>Family</option>
       </select>
     </div>
     <div>
-      <input type="submit" value="Save Changes" class="w-full bg-green text-white p-2 rounded hover:bg-cyan">
+      <input type="submit" value="Save Changes" class="btn-primary">
     </div>
   </form>
 {% endblock %}

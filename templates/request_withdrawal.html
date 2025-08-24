@@ -6,19 +6,19 @@
   <form method="post" class="space-y-4 max-w-lg mx-auto">
     {{ csrf_field() }}
     <div>
-      <label class="block">Request Date:</label>
-      <input type="date" name="request_date" class="w-full border border-black p-2 rounded">
+      <label class="form-label">Request Date:</label>
+      <input type="date" name="request_date" class="form-input">
     </div>
     <div>
-      <label class="block">Amount (Rs):</label>
-      <input type="text" name="amount" class="w-full border border-black p-2 rounded">
+      <label class="form-label">Amount (Rs):</label>
+      <input type="text" name="amount" class="form-input">
     </div>
     <div>
-      <label class="block">Comment:</label>
-      <input type="text" name="comment" class="w-full border border-black p-2 rounded">
+      <label class="form-label">Comment:</label>
+      <input type="text" name="comment" class="form-input">
     </div>
     <div>
-      <input type="submit" value="Submit Withdrawal Request" class="w-full bg-green text-white p-2 rounded hover:bg-cyan">
+      <input type="submit" value="Submit Withdrawal Request" class="btn-primary">
     </div>
   </form>
 {% endblock %}

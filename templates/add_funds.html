@@ -6,23 +6,23 @@
   <form method="post" class="space-y-4 max-w-lg mx-auto">
     {{ csrf_field() }}
     <div>
-      <label class="block">Select Contributor:</label>
-      <select name="contributor" class="w-full border border-black p-2 rounded">
+      <label class="form-label">Select Contributor:</label>
+      <select name="contributor" class="form-input">
         {% for c in contributors %}
           <option value="{{ c.name }}">{{ c.name }}</option>
         {% endfor %}
       </select>
     </div>
     <div>
-      <label class="block">Additional Deposit (Rs):</label>
-      <input type="text" name="deposit" class="w-full border border-black p-2 rounded">
+      <label class="form-label">Additional Deposit (Rs):</label>
+      <input type="text" name="deposit" class="form-input">
     </div>
     <div>
-      <label class="block">Deposit Date:</label>
-      <input type="date" name="deposit_date" class="w-full border border-black p-2 rounded">
+      <label class="form-label">Deposit Date:</label>
+      <input type="date" name="deposit_date" class="form-input">
     </div>
     <div>
-      <input type="submit" value="Add Funds" class="w-full bg-green text-white p-2 rounded hover:bg-cyan">
+      <input type="submit" value="Add Funds" class="btn-primary">
     </div>
   </form>
 {% endblock %}
