@@ -11,6 +11,16 @@ import secrets
 from datetime import datetime, date
 from markupsafe import Markup
 from werkzeug.security import generate_password_hash, check_password_hash
+import urllib.parse
+
+# Try to import PostgreSQL support
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    HAS_POSTGRES = True
+except ImportError:
+    HAS_POSTGRES = False
+    logging.warning("PostgreSQL support not available. Using SQLite only.")
 
 # ----------------------------
 # Setup Logging
@@ -25,111 +35,167 @@ logging.basicConfig(
 # Database Manager Class
 # ----------------------------
 class DatabaseManager:
-    def __init__(self, db_name="fund_manager.db"):
-        # One connection per request (thread-safe) via Flask g
-        self.conn = sqlite3.connect(db_name)
-        self.conn.row_factory = sqlite3.Row  # rows behave like dictionaries
-        # Enforce foreign keys
-        self.conn.execute("PRAGMA foreign_keys = ON")
+    def __init__(self):
+        # Determine database type from environment
+        self.database_url = os.environ.get('DATABASE_URL')
+        self.is_postgres = self.database_url and self.database_url.startswith(('postgres://', 'postgresql://'))
+        
+        if self.is_postgres and HAS_POSTGRES:
+            # PostgreSQL connection
+            # Handle both postgres:// and postgresql:// URLs
+            if self.database_url.startswith('postgres://'):
+                self.database_url = self.database_url.replace('postgres://', 'postgresql://', 1)
+            
+            self.conn = psycopg2.connect(self.database_url, cursor_factory=RealDictCursor)
+            self.conn.autocommit = False  # We'll handle transactions manually
+            logging.info("Connected to PostgreSQL database")
+        else:
+            # SQLite connection (fallback and local development)
+            db_name = os.environ.get('DATABASE_PATH', 'fund_manager.db')
+            self.conn = sqlite3.connect(db_name)
+            self.conn.row_factory = sqlite3.Row
+            # Enforce foreign keys for SQLite
+            self.conn.execute("PRAGMA foreign_keys = ON")
+            logging.info(f"Connected to SQLite database: {db_name}")
+        
         self.create_tables()
+
+    def execute_query(self, query, params=None, fetch=False, fetchone=False):
+        """Execute query with proper parameter substitution for both DB types"""
+        if params is None:
+            params = []
+        
+        cursor = self.conn.cursor()
+        
+        # Convert SQLite-style ? placeholders to PostgreSQL-style %s if needed
+        if self.is_postgres and '?' in query:
+            query = query.replace('?', '%s')
+        
+        cursor.execute(query, params)
+        
+        if fetchone:
+            result = cursor.fetchone()
+            return dict(result) if result else None
+        elif fetch:
+            results = cursor.fetchall()
+            return [dict(row) for row in results]
+        else:
+            return cursor.rowcount
 
     def create_tables(self):
         c = self.conn.cursor()
+        
+        # Determine the correct syntax for each database type
+        if self.is_postgres:
+            # PostgreSQL syntax
+            id_type = "SERIAL PRIMARY KEY"
+            text_type = "TEXT"
+            real_type = "REAL"
+            placeholder = "%s"
+        else:
+            # SQLite syntax
+            id_type = "INTEGER PRIMARY KEY AUTOINCREMENT"
+            text_type = "TEXT"
+            real_type = "REAL"
+            placeholder = "?"
+        
         # Users table
-        c.execute("""
+        c.execute(f"""
             CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE,
-                password TEXT,
-                role TEXT
+                id {id_type},
+                username {text_type} UNIQUE,
+                password {text_type},
+                role {text_type}
             )
         """)
+        
         # Insert default admin accounts if none exist
         c.execute("SELECT COUNT(*) as count FROM users")
         count = c.fetchone()["count"]
         if count == 0:
-            # Create default admin accounts with hashed passwords. Change these in production.
+            # Create default admin accounts with hashed passwords
             c.execute(
-                "INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
-                ("admin1", generate_password_hash("admin1"), "admin"),
+                f"INSERT INTO users (username, password, role) VALUES ({placeholder}, {placeholder}, {placeholder})",
+                ("admin1", generate_password_hash("admin123"), "admin"),
             )
-            c.execute(
-                "INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
-                ("admin2", generate_password_hash("admin2"), "admin"),
-            )
-            logging.info("Inserted default admin accounts.")
+            logging.info("Inserted default admin account.")
+        
         # Contributors table
-        c.execute("""
+        c.execute(f"""
             CREATE TABLE IF NOT EXISTS contributors (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT UNIQUE,
-                type TEXT,
-                login_username TEXT
+                id {id_type},
+                name {text_type} UNIQUE,
+                type {text_type},
+                login_username {text_type}
             )
         """)
-        c.execute("PRAGMA table_info(contributors)")
-        cols = [row["name"] for row in c.fetchall()]
-        if "login_username" not in cols:
-            c.execute("ALTER TABLE contributors ADD COLUMN login_username TEXT")
-            self.conn.commit()
+        
+        # Check if login_username column exists (for migration)
+        if not self.is_postgres:
+            c.execute("PRAGMA table_info(contributors)")
+            cols = [row["name"] for row in c.fetchall()]
+            if "login_username" not in cols:
+                c.execute("ALTER TABLE contributors ADD COLUMN login_username TEXT")
+        
         # Transactions table
-        c.execute("""
+        c.execute(f"""
             CREATE TABLE IF NOT EXISTS transactions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {id_type},
                 contributor_id INTEGER,
-                date TEXT,
-                type TEXT,
-                amount REAL,
-                asset TEXT,
-                allocated_charges REAL,
-                comment TEXT,
-                FOREIGN KEY (contributor_id) REFERENCES contributors(id)
+                date {text_type},
+                type {text_type},
+                amount {real_type},
+                purpose {text_type},
+                trade_symbol {text_type},
+                trade_quantity {real_type},
+                trade_price {real_type},
+                trade_type {text_type},
+                trade_status {text_type},
+                trade_fees {real_type},
+                trade_notes {text_type},
+                trade_pnl {real_type},
+                trade_exit_price {real_type},
+                FOREIGN KEY (contributor_id) REFERENCES contributors (id)
             )
         """)
-        # Trades table
-        c.execute("""
-            CREATE TABLE IF NOT EXISTS trades (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                trade_date TEXT,
-                asset TEXT,
-                pnl REAL,
-                charges REAL,
-                commission REAL,
-                net_pnl REAL,
-                net_profit_after_commission REAL,
-                comment TEXT
-            )
-        """)
-        # Ensure extended trade columns exist (SQLite simple migration)
-        c.execute("PRAGMA table_info(trades)")
-        trade_cols = {row[1] for row in c.fetchall()}
-        def _ensure_trade_col(name, decl):
-            if name not in trade_cols:
-                c.execute(f"ALTER TABLE trades ADD COLUMN {name} {decl}")
-        _ensure_trade_col("quantity", "REAL")
-        _ensure_trade_col("entry_price", "REAL")
-        _ensure_trade_col("exit_price", "REAL")
-        _ensure_trade_col("side", "TEXT")
-        _ensure_trade_col("instrument", "TEXT")
-        _ensure_trade_col("broker", "TEXT")
-        _ensure_trade_col("trade_ref", "TEXT")
-        _ensure_trade_col("strategy", "TEXT")
-        _ensure_trade_col("tags", "TEXT")
-        # Withdrawal Requests table
-        c.execute("""
+        
+        # Add missing columns for existing installations (migration)
+        if not self.is_postgres:
+            # SQLite migration logic
+            c.execute("PRAGMA table_info(transactions)")
+            existing_cols = {row["name"] for row in c.fetchall()}
+            
+            new_columns = [
+                "trade_symbol", "trade_quantity", "trade_price", "trade_type",
+                "trade_status", "trade_fees", "trade_notes", "trade_pnl", "trade_exit_price"
+            ]
+            
+            for col in new_columns:
+                if col not in existing_cols:
+                    col_type = real_type if col in ["trade_quantity", "trade_price", "trade_fees", "trade_pnl", "trade_exit_price"] else text_type
+                    c.execute(f"ALTER TABLE transactions ADD COLUMN {col} {col_type}")
+                    logging.info(f"Added column {col} to transactions table")
+        
+        # Withdrawal requests table
+        c.execute(f"""
             CREATE TABLE IF NOT EXISTS withdrawal_requests (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id {id_type},
                 contributor_id INTEGER,
-                request_date TEXT,
-                amount REAL,
-                comment TEXT,
-                status TEXT DEFAULT 'pending',
-                approved_date TEXT,
-                admin_comment TEXT,
-                FOREIGN KEY (contributor_id) REFERENCES contributors(id)
+                amount {real_type},
+                status {text_type} DEFAULT 'pending',
+                request_date {text_type},
+                admin_notes {text_type},
+                FOREIGN KEY (contributor_id) REFERENCES contributors (id)
             )
         """)
+        
         self.conn.commit()
+        logging.info("Database tables created/updated successfully")
+
+    def close(self):
+        """Close database connection"""
+        if self.conn:
+            self.conn.close()
 
     # User management functions:
     def add_user(self, username, password, role="user"):
@@ -525,6 +591,18 @@ def logout():
     session.clear()
     flash("Logged out successfully.")
     return redirect(url_for("login"))
+
+# Health check endpoint for Render
+@app.route("/health")
+def health_check():
+    """Health check endpoint for monitoring"""
+    try:
+        # Test database connection
+        db_instance = get_db()
+        db_instance.execute_query("SELECT 1", fetch=True)
+        return {"status": "healthy", "database": "connected"}, 200
+    except Exception as e:
+        return {"status": "unhealthy", "error": str(e)}, 500
 
 # Dashboard
 @app.route("/dashboard")
