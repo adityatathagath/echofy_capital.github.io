@@ -349,6 +349,55 @@ class DatabaseManager:
         c.execute("SELECT COUNT(*) AS cnt FROM users WHERE role='admin'")
         row = c.fetchone()
         return row["cnt"] if row else 0
+    
+    def delete_contributor(self, contributor_id):
+        """Delete a contributor and all associated data"""
+        c = self.conn.cursor()
+        try:
+            # Delete associated transactions first (foreign key)
+            c.execute("DELETE FROM transactions WHERE contributor_id=?", (contributor_id,))
+            # Delete associated withdrawal requests
+            c.execute("DELETE FROM withdrawal_requests WHERE contributor_id=?", (contributor_id,))
+            # Delete the contributor
+            c.execute("DELETE FROM contributors WHERE id=?", (contributor_id,))
+            self.conn.commit()
+            logging.info(f"Deleted contributor id {contributor_id} and all associated data")
+            return True
+        except Exception as e:
+            self.conn.rollback()
+            logging.error(f"Error deleting contributor {contributor_id}: {str(e)}")
+            return False
+    
+    def get_contributor_with_stats(self, contributor_id):
+        """Get contributor with transaction statistics"""
+        c = self.conn.cursor()
+        # Get contributor info
+        c.execute("SELECT * FROM contributors WHERE id=?", (contributor_id,))
+        contributor = c.fetchone()
+        if not contributor:
+            return None
+        
+        # Get transaction stats
+        c.execute("""
+            SELECT 
+                COUNT(*) as transaction_count,
+                SUM(CASE WHEN type='deposit' THEN amount ELSE 0 END) as total_deposits,
+                SUM(CASE WHEN type='withdrawal' THEN ABS(amount) ELSE 0 END) as total_withdrawals,
+                SUM(amount) as current_balance
+            FROM transactions WHERE contributor_id=?
+        """, (contributor_id,))
+        stats = c.fetchone()
+        
+        return {
+            "id": contributor["id"],
+            "name": contributor["name"],
+            "type": contributor["type"],
+            "login_username": contributor["login_username"],
+            "transaction_count": stats["transaction_count"] if stats else 0,
+            "total_deposits": stats["total_deposits"] if stats else 0,
+            "total_withdrawals": stats["total_withdrawals"] if stats else 0,
+            "current_balance": stats["current_balance"] if stats else 0
+        }
 
 # ----------------------------
 # Create the Flask App Instance
@@ -511,13 +560,14 @@ def dashboard():
     extra_metrics = None
     if role != "admin":
         contrib = db_instance.get_contributor_by_login(username)
-        user_txns = db_instance.get_transactions_for_contributor(contrib["id"])
-        total_deposits = sum(txn["amount"] for txn in user_txns if txn["type"]=="deposit")
-        total_withdrawn = abs(sum(txn["amount"] for txn in user_txns if txn["type"]=="withdrawal"))
-        current_balance = sum(txn["amount"] for txn in user_txns)
-        roi = ((current_balance + total_withdrawn - total_deposits) / total_deposits * 100) if total_deposits > 0 else 0
-        extra_metrics = {
-            "total_deposits": total_deposits,
+        if contrib:
+            user_txns = db_instance.get_transactions_for_contributor(contrib["id"])
+            total_deposits = sum(txn["amount"] for txn in user_txns if txn["type"]=="deposit")
+            total_withdrawn = abs(sum(txn["amount"] for txn in user_txns if txn["type"]=="withdrawal"))
+            current_balance = sum(txn["amount"] for txn in user_txns)
+            roi = ((current_balance + total_withdrawn - total_deposits) / total_deposits * 100) if total_deposits > 0 else 0
+            extra_metrics = {
+                "total_deposits": total_deposits,
             "total_withdrawn": total_withdrawn,
             "current_balance": current_balance,
             "roi": roi
@@ -901,10 +951,14 @@ def trade_history():
         trades = db_instance.get_all_trades()
     else:
         contrib = db_instance.get_contributor_by_login(session.get("username"))
-        all_trades = db_instance.get_all_trades()
-        my_txns = db_instance.get_transactions_for_contributor(contrib["id"])
-        my_trade_keys = {(txn["date"], txn["asset"]) for txn in my_txns if txn["type"]=="trade"}
-        trades = [trade for trade in all_trades if (trade["trade_date"], trade["asset"]) in my_trade_keys]
+        if not contrib:
+            flash("No contributor profile found for your account.")
+            trades = []
+        else:
+            all_trades = db_instance.get_all_trades()
+            my_txns = db_instance.get_transactions_for_contributor(contrib["id"])
+            my_trade_keys = {(txn["date"], txn["asset"]) for txn in my_txns if txn["type"]=="trade"}
+            trades = [trade for trade in all_trades if (trade["trade_date"], trade["asset"]) in my_trade_keys]
     formatted_trades = []
     for trade in trades:
         details_parts = []
@@ -1076,7 +1130,14 @@ def sanitize_csv_value(value):
 def manage_contributors():
     db_instance = get_db()
     contributors = db_instance.get_all_contributors()
-    return render_template("manage_contributors.html", contributors=contributors)
+    
+    # Enhanced contributors with statistics
+    enhanced_contributors = []
+    for contrib in contributors:
+        contrib_stats = db_instance.get_contributor_with_stats(contrib['id'])
+        enhanced_contributors.append(contrib_stats)
+    
+    return render_template("manage_contributors.html", contributors=enhanced_contributors)
 
 # Edit Contributor (admin only)
 @app.route("/edit_contributor/<int:contrib_id>", methods=["GET", "POST"])
@@ -1098,6 +1159,32 @@ def edit_contributor(contrib_id):
         flash("Contributor updated successfully.")
         return redirect(url_for("manage_contributors"))
     return render_template("edit_contributor.html", contributor=contributor)
+
+# Delete Contributor (admin only)
+@app.route("/delete_contributor/<int:contrib_id>", methods=["POST"])
+@login_required
+@admin_required
+def delete_contributor_route(contrib_id):
+    db_instance = get_db()
+    try:
+        # Get contributor details for confirmation
+        contributor = db_instance.get_contributor_by_id(contrib_id)
+        if not contributor:
+            flash("Contributor not found.", "error")
+            return redirect(url_for("manage_contributors"))
+        
+        # Use the delete method we added to DatabaseManager
+        success = db_instance.delete_contributor(contrib_id)
+        
+        if success:
+            flash(f"Contributor '{contributor['name']}' and all related data deleted successfully.", "success")
+        else:
+            flash("Failed to delete contributor. Please try again.", "error")
+            
+    except Exception as e:
+        flash(f"Error deleting contributor: {str(e)}", "error")
+        
+    return redirect(url_for("manage_contributors"))
 
 # Assign Credentials (admin only)
 @app.route("/assign_credentials/<int:contrib_id>", methods=["GET", "POST"])
@@ -1249,5 +1336,5 @@ def edit_transaction(txn_id):
 # Run the App
 # ----------------------------
 if __name__ == "__main__":
-    debug = bool(os.environ.get("FLASK_DEBUG"))
-    app.run(debug=debug)
+    debug = True  # Enable debug mode to see detailed error messages
+    app.run(debug=debug, host='127.0.0.1', port=5000)
