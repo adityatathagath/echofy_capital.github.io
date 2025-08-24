@@ -1,45 +1,63 @@
-# PowerShell script to deploy to Render using API
-param(
-    [string]$ApiKey = "rnd_o0PgMkcFBAc6WvNR2yhQeN7WsM2g"
-)
+# PowerShell script to deploy Echofy Capital to Render
+# This script will use the render.yaml configuration file
 
-$Headers = @{
-    "Authorization" = "Bearer $ApiKey"
-    "Content-Type" = "application/json"
-}
+Write-Host "🚀 Starting deployment to Render..." -ForegroundColor Green
 
-Write-Host "🚀 Starting Render Deployment..." -ForegroundColor Green
-Write-Host "API Key: $($ApiKey.Substring(0,10))..." -ForegroundColor Yellow
-
-try {
-    # Test API connection
-    Write-Host "Testing API connection..." -ForegroundColor Cyan
-    $testResponse = Invoke-RestMethod -Uri "https://api.render.com/v1/owners" -Method GET -Headers $Headers
-    Write-Host "✅ API connection successful!" -ForegroundColor Green
-    Write-Host "Account: $($testResponse.name)" -ForegroundColor Yellow
-    
-    # Fetch existing services
-    Write-Host "Fetching existing services..." -ForegroundColor Cyan
-    $services = Invoke-RestMethod -Uri "https://api.render.com/v1/services" -Method GET -Headers $Headers
-    
-    Write-Host "Current services:" -ForegroundColor Yellow
-    foreach ($service in $services) {
-        Write-Host "  - $($service.name) ($($service.type))" -ForegroundColor Gray
+# Check if required files exist
+$requiredFiles = @("app.py", "requirements.txt", "gunicorn_config.py", "render.yaml")
+foreach ($file in $requiredFiles) {
+    if (-not (Test-Path $file)) {
+        Write-Host "❌ Required file $file not found!" -ForegroundColor Red
+        exit 1
     }
-    
-    Write-Host "🎯 Next Steps for Deployment:" -ForegroundColor Magenta
-    Write-Host "Repository: https://github.com/adityatathagath/echofy_capital.github.io" -ForegroundColor White
-    Write-Host "Branch: main" -ForegroundColor White
-    Write-Host "Configuration: render.yaml detected" -ForegroundColor White
-    Write-Host ""
-    Write-Host "✨ To Deploy:" -ForegroundColor Green
-    Write-Host "1. Go to https://dashboard.render.com" -ForegroundColor White
-    Write-Host "2. Click 'New' → 'Blueprint'" -ForegroundColor White
-    Write-Host "3. Connect GitHub repository" -ForegroundColor White
-    Write-Host "4. Select 'adityatathagath/echofy_capital.github.io'" -ForegroundColor White
-    Write-Host "5. Click 'Apply'" -ForegroundColor White
-    
-} catch {
-    Write-Host "❌ Error: $($_.Exception.Message)" -ForegroundColor Red
-    Write-Host "Manual deployment recommended via Render Dashboard" -ForegroundColor Yellow
 }
+
+Write-Host "✅ All required files found" -ForegroundColor Green
+
+# Check if we have the MCP configuration
+if (-not (Test-Path "mcp.json")) {
+    Write-Host "❌ MCP configuration file not found!" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "✅ MCP configuration found" -ForegroundColor Green
+
+# Install Render CLI if not already installed
+try {
+    $renderVersion = render --version
+    Write-Host "✅ Render CLI found: $renderVersion" -ForegroundColor Green
+} catch {
+    Write-Host "📦 Installing Render CLI..." -ForegroundColor Yellow
+    try {
+        # Try to install via winget first
+        winget install render.render-cli
+    } catch {
+        Write-Host "❌ Failed to install Render CLI via winget" -ForegroundColor Red
+        Write-Host "Please install manually from: https://render.com/docs/install-cli" -ForegroundColor Yellow
+        exit 1
+    }
+}
+
+# Login to Render (if not already logged in)
+Write-Host "🔐 Checking Render login status..." -ForegroundColor Yellow
+try {
+    $user = render whoami
+    Write-Host "✅ Logged in as: $user" -ForegroundColor Green
+} catch {
+    Write-Host "🔐 Please login to Render..." -ForegroundColor Yellow
+    render login
+}
+
+# Deploy using render.yaml
+Write-Host "🚀 Deploying to Render using render.yaml..." -ForegroundColor Green
+try {
+    render up --file render.yaml
+    Write-Host "✅ Deployment completed successfully!" -ForegroundColor Green
+} catch {
+    Write-Host "❌ Deployment failed!" -ForegroundColor Red
+    Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "🎉 Your app is now deployed on Render!" -ForegroundColor Green
+Write-Host "Check your Render dashboard for the service URL" -ForegroundColor Cyan

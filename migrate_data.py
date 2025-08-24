@@ -1,110 +1,232 @@
 #!/usr/bin/env python3
 """
-Migration script to move data from SQLite to PostgreSQL for Render deployment
-Run this script to migrate your existing data when switching to PostgreSQL
+Database migration script for transitioning from SQLite to PostgreSQL
 """
 
 import os
 import sqlite3
 import psycopg2
 from psycopg2.extras import RealDictCursor
-import sys
+import logging
 
-def migrate_data():
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def migrate_sqlite_to_postgres():
     """Migrate data from SQLite to PostgreSQL"""
     
-    # Source SQLite database
-    sqlite_db = 'fund_manager.db'
-    if not os.path.exists(sqlite_db):
-        print(f"SQLite database {sqlite_db} not found!")
-        return False
-    
-    # Target PostgreSQL database (from environment)
+    # Get database URLs
+    sqlite_path = os.environ.get('SQLITE_DB_PATH', 'fund_manager.db')
     postgres_url = os.environ.get('DATABASE_URL')
+    
     if not postgres_url:
-        print("DATABASE_URL environment variable not set!")
-        print("Please set it to your PostgreSQL connection string")
+        logger.error("DATABASE_URL environment variable not set")
         return False
     
-    if postgres_url.startswith('postgres://'):
-        postgres_url = postgres_url.replace('postgres://', 'postgresql://', 1)
-    
-    print("Starting data migration from SQLite to PostgreSQL...")
+    if not os.path.exists(sqlite_path):
+        logger.info(f"SQLite database {sqlite_path} not found, skipping migration")
+        return True
     
     try:
         # Connect to SQLite
-        sqlite_conn = sqlite3.connect(sqlite_db)
+        sqlite_conn = sqlite3.connect(sqlite_path)
         sqlite_conn.row_factory = sqlite3.Row
         
         # Connect to PostgreSQL
-        pg_conn = psycopg2.connect(postgres_url, cursor_factory=RealDictCursor)
+        if postgres_url.startswith('postgres://'):
+            postgres_url = postgres_url.replace('postgres://', 'postgresql://', 1)
         
-        # Get cursors
-        sqlite_cur = sqlite_conn.cursor()
-        pg_cur = pg_conn.cursor()
+        postgres_conn = psycopg2.connect(postgres_url, cursor_factory=RealDictCursor)
         
-        print("✓ Connected to both databases")
+        logger.info("Connected to both databases")
         
-        # Tables to migrate
-        tables = ['users', 'contributors', 'transactions', 'withdrawal_requests']
+        # Migrate users table
+        logger.info("Migrating users table...")
+        sqlite_cursor = sqlite_conn.execute("SELECT * FROM users")
+        users = sqlite_cursor.fetchall()
         
-        for table in tables:
-            print(f"Migrating {table}...")
-            
-            # Get data from SQLite
-            sqlite_cur.execute(f"SELECT * FROM {table}")
-            rows = sqlite_cur.fetchall()
-            
-            if not rows:
-                print(f"  No data in {table}")
-                continue
-            
-            # Clear existing data in PostgreSQL (optional - remove if you want to keep existing data)
-            pg_cur.execute(f"DELETE FROM {table}")
-            
-            # Insert data into PostgreSQL
-            for row in rows:
-                columns = list(row.keys())
-                values = list(row)
-                
-                # Handle the id column - don't insert it for SERIAL columns
-                if 'id' in columns and table in ['users', 'contributors', 'transactions', 'withdrawal_requests']:
-                    id_index = columns.index('id')
-                    columns.pop(id_index)
-                    values.pop(id_index)
-                
-                if columns and values:
-                    placeholders = ', '.join(['%s'] * len(values))
-                    column_names = ', '.join(columns)
-                    
-                    query = f"INSERT INTO {table} ({column_names}) VALUES ({placeholders})"
-                    pg_cur.execute(query, values)
-            
-            print(f"  ✓ Migrated {len(rows)} rows from {table}")
+        postgres_cursor = postgres_conn.cursor()
+        for user in users:
+            postgres_cursor.execute(
+                "INSERT INTO users (username, password, role) VALUES (%s, %s, %s) ON CONFLICT (username) DO NOTHING",
+                (user['username'], user['password'], user['role'])
+            )
+        
+        # Migrate contributors table
+        logger.info("Migrating contributors table...")
+        sqlite_cursor = sqlite_conn.execute("SELECT * FROM contributors")
+        contributors = sqlite_cursor.fetchall()
+        
+        for contrib in contributors:
+            postgres_cursor.execute(
+                "INSERT INTO contributors (name, type, login_username) VALUES (%s, %s, %s) ON CONFLICT (name) DO NOTHING",
+                (contrib['name'], contrib['type'], contrib['login_username'])
+            )
+        
+        # Migrate transactions table
+        logger.info("Migrating transactions table...")
+        sqlite_cursor = sqlite_conn.execute("SELECT * FROM transactions")
+        transactions = sqlite_cursor.fetchall()
+        
+        for txn in transactions:
+            postgres_cursor.execute("""
+                INSERT INTO transactions 
+                (contributor_id, date, type, amount, purpose, trade_symbol, trade_quantity, 
+                 trade_price, trade_type, trade_status, trade_fees, trade_notes, trade_pnl, trade_exit_price)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                txn['contributor_id'], txn['date'], txn['type'], txn['amount'],
+                txn.get('purpose', ''), txn.get('trade_symbol', ''), txn.get('trade_quantity', 0),
+                txn.get('trade_price', 0), txn.get('trade_type', ''), txn.get('trade_status', ''),
+                txn.get('trade_fees', 0), txn.get('trade_notes', ''), txn.get('trade_pnl', 0),
+                txn.get('trade_exit_price', 0)
+            ))
+        
+        # Migrate withdrawal requests table
+        logger.info("Migrating withdrawal requests table...")
+        sqlite_cursor = sqlite_conn.execute("SELECT * FROM withdrawal_requests")
+        withdrawal_requests = sqlite_cursor.fetchall()
+        
+        for req in withdrawal_requests:
+            postgres_cursor.execute("""
+                INSERT INTO withdrawal_requests 
+                (contributor_id, amount, status, request_date, admin_notes)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (
+                req['contributor_id'], req['amount'], req['status'],
+                req['request_date'], req.get('admin_notes', '')
+            ))
         
         # Commit all changes
-        pg_conn.commit()
+        postgres_conn.commit()
+        logger.info("Migration completed successfully")
         
         # Close connections
         sqlite_conn.close()
-        pg_conn.close()
+        postgres_conn.close()
         
-        print("✅ Migration completed successfully!")
         return True
         
     except Exception as e:
-        print(f"❌ Migration failed: {e}")
+        logger.error(f"Migration failed: {str(e)}")
+        if 'postgres_conn' in locals():
+            postgres_conn.rollback()
+            postgres_conn.close()
+        if 'sqlite_conn' in locals():
+            sqlite_conn.close()
+        return False
+
+def create_postgres_tables():
+    """Create tables in PostgreSQL database"""
+    
+    postgres_url = os.environ.get('DATABASE_URL')
+    if not postgres_url:
+        logger.error("DATABASE_URL environment variable not set")
+        return False
+    
+    try:
+        if postgres_url.startswith('postgres://'):
+            postgres_url = postgres_url.replace('postgres://', 'postgresql://', 1)
+        
+        postgres_conn = psycopg2.connect(postgres_url, cursor_factory=RealDictCursor)
+        postgres_cursor = postgres_conn.cursor()
+        
+        # Create tables with PostgreSQL syntax
+        postgres_cursor.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                username TEXT UNIQUE,
+                password TEXT,
+                role TEXT
+            )
+        """)
+        
+        postgres_cursor.execute("""
+            CREATE TABLE IF NOT EXISTS contributors (
+                id SERIAL PRIMARY KEY,
+                name TEXT UNIQUE,
+                type TEXT,
+                login_username TEXT
+            )
+        """)
+        
+        postgres_cursor.execute("""
+            CREATE TABLE IF NOT EXISTS transactions (
+                id SERIAL PRIMARY KEY,
+                contributor_id INTEGER,
+                date TEXT,
+                type TEXT,
+                amount REAL,
+                purpose TEXT,
+                trade_symbol TEXT,
+                trade_quantity REAL,
+                trade_price REAL,
+                trade_type TEXT,
+                trade_status TEXT,
+                trade_fees REAL,
+                trade_notes TEXT,
+                trade_pnl REAL,
+                trade_exit_price REAL,
+                FOREIGN KEY (contributor_id) REFERENCES contributors (id)
+            )
+        """)
+        
+        postgres_cursor.execute("""
+            CREATE TABLE IF NOT EXISTS withdrawal_requests (
+                id SERIAL PRIMARY KEY,
+                contributor_id INTEGER,
+                amount REAL,
+                status TEXT DEFAULT 'pending',
+                request_date TEXT,
+                admin_notes TEXT,
+                FOREIGN KEY (contributor_id) REFERENCES contributors (id)
+            )
+        """)
+        
+        # Create trades table if it doesn't exist
+        postgres_cursor.execute("""
+            CREATE TABLE IF NOT EXISTS trades (
+                id SERIAL PRIMARY KEY,
+                trade_date TEXT,
+                asset TEXT,
+                pnl REAL,
+                charges REAL,
+                commission REAL,
+                net_pnl REAL,
+                net_profit_after_commission REAL,
+                comment TEXT,
+                side TEXT,
+                quantity REAL,
+                entry_price REAL,
+                exit_price REAL,
+                instrument TEXT,
+                broker TEXT,
+                trade_ref TEXT,
+                strategy TEXT,
+                tags TEXT
+            )
+        """)
+        
+        postgres_conn.commit()
+        postgres_conn.close()
+        
+        logger.info("PostgreSQL tables created successfully")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to create PostgreSQL tables: {str(e)}")
         return False
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and sys.argv[1] == "--confirm":
-        migrate_data()
+    logger.info("Starting database migration...")
+    
+    # First create tables
+    if create_postgres_tables():
+        # Then migrate data
+        if migrate_sqlite_to_postgres():
+            logger.info("Database migration completed successfully!")
+        else:
+            logger.error("Data migration failed!")
     else:
-        print("Data Migration Script")
-        print("====================")
-        print("This script will migrate data from SQLite to PostgreSQL")
-        print("Make sure to set the DATABASE_URL environment variable first")
-        print()
-        print("Usage: python migrate_data.py --confirm")
-        print()
-        print("WARNING: This will replace all data in the PostgreSQL database!")
+        logger.error("Table creation failed!")

@@ -420,6 +420,14 @@ class DatabaseManager:
         """Delete a contributor and all associated data"""
         c = self.conn.cursor()
         try:
+            # Get contributor details first
+            c.execute("SELECT login_username FROM contributors WHERE id=?", (contributor_id,))
+            contributor = c.fetchone()
+            if contributor and contributor.get("login_username"):
+                # Delete associated user account if exists
+                c.execute("DELETE FROM users WHERE username=?", (contributor["login_username"],))
+                logging.info(f"Deleted user account for contributor {contributor_id}")
+            
             # Delete associated transactions first (foreign key)
             c.execute("DELETE FROM transactions WHERE contributor_id=?", (contributor_id,))
             # Delete associated withdrawal requests
@@ -1253,16 +1261,21 @@ def delete_contributor_route(contrib_id):
             flash("Contributor not found.", "error")
             return redirect(url_for("manage_contributors"))
         
+        logging.info(f"Attempting to delete contributor {contrib_id}: {contributor['name']}")
+        
         # Use the delete method we added to DatabaseManager
         success = db_instance.delete_contributor(contrib_id)
         
         if success:
             flash(f"Contributor '{contributor['name']}' and all related data deleted successfully.", "success")
+            logging.info(f"Successfully deleted contributor {contrib_id}")
         else:
             flash("Failed to delete contributor. Please try again.", "error")
+            logging.error(f"Failed to delete contributor {contrib_id}")
             
     except Exception as e:
         flash(f"Error deleting contributor: {str(e)}", "error")
+        logging.error(f"Exception while deleting contributor {contrib_id}: {str(e)}")
         
     return redirect(url_for("manage_contributors"))
 

@@ -1,145 +1,152 @@
-# 🚀 Render Deployment Guide
+# Echofy Capital - Render Deployment Guide
 
-This guide will help you deploy your Flask fund management application to Render with PostgreSQL.
+This guide will help you deploy your Echofy Capital fund management application to Render with a PostgreSQL database.
 
-## 📋 Prerequisites
+## Prerequisites
 
-1. **Render Account**: Sign up at [render.com](https://render.com) if you haven't already
-2. **GitHub Repository**: Your code should be pushed to GitHub (already done ✅)
+- GitHub repository with your code
+- Render account (free tier available)
+- MCP server configured (already done)
 
-## 🗄️ Database Setup
+## Files Overview
 
-### Option 1: Using Render Dashboard (Recommended)
+Your project already has all the necessary files for deployment:
 
-1. **Create PostgreSQL Database**:
-   - Go to [Render Dashboard](https://dashboard.render.com)
-   - Click "New" → "PostgreSQL"
-   - Choose the **Free** plan
-   - Database Name: `fund_manager`
-   - Database User: `fund_manager_user`
-   - Click "Create Database"
+- `app.py` - Main Flask application with PostgreSQL support
+- `requirements.txt` - Python dependencies including psycopg2-binary
+- `gunicorn_config.py` - Production server configuration
+- `render.yaml` - Render deployment configuration
+- `migrate_data.py` - Database migration script
+- `mcp.json` - MCP server configuration
 
-2. **Note Connection Details**:
-   - After creation, you'll see the connection string
-   - Copy the "External Database URL" (starts with `postgres://`)
+## Deployment Options
 
-### Option 2: Using Infrastructure as Code
+### Option 1: Deploy via Render Dashboard (Recommended)
 
-The `render.yaml` file in your repository will automatically create both the web service and database when you connect the repository.
+1. **Go to Render Dashboard**
+   - Visit [https://dashboard.render.com](https://dashboard.render.com)
+   - Sign in with your account
 
-## 🌐 Web Service Setup
-
-### Method 1: Using render.yaml (Recommended)
-
-1. **Connect Repository**:
-   - Go to Render Dashboard
+2. **Create New Blueprint**
    - Click "New" → "Blueprint"
-   - Connect your GitHub repository: `adityatathagath/echofy_capital.github.io`
-   - Render will automatically detect the `render.yaml` file
-
-2. **Review Configuration**:
-   - Service Name: `echofy-capital-web`
-   - Environment: `python`
-   - Plan: `Free`
-   - Build Command: `pip install -r requirements.txt`
-   - Start Command: `gunicorn --config gunicorn_config.py app:app`
-
-3. **Deploy**:
-   - Click "Apply" to deploy both database and web service
-   - Render will automatically set up environment variables
-
-### Method 2: Manual Setup
-
-If you prefer manual setup:
-
-1. **Create Web Service**:
-   - Go to Render Dashboard
-   - Click "New" → "Web Service"
    - Connect your GitHub repository
-   - Choose the following settings:
-     - Environment: `Python`
-     - Build Command: `pip install -r requirements.txt`
-     - Start Command: `gunicorn --config gunicorn_config.py app:app`
+   - Select `echofy_capital.github.io-1`
 
-2. **Set Environment Variables**:
-   ```
-   FLASK_ENV=production
-   SESSION_COOKIE_SECURE=true
-   FLASK_DEBUG=false
-   SECRET_KEY=<generate-random-secret>
-   DATABASE_URL=<your-postgres-connection-string>
-   ```
+3. **Review Configuration**
+   - The `render.yaml` file will automatically configure:
+     - Web service with Python environment
+     - PostgreSQL database
+     - Environment variables
+     - Health check endpoint
 
-## 🔄 Data Migration (If you have existing data)
+4. **Deploy**
+   - Click "Apply" to start deployment
+   - Wait for both database and web service to be ready
 
-If you have existing data in your local SQLite database:
+### Option 2: Deploy via PowerShell Script
 
-1. **Set DATABASE_URL locally**:
+Run the PowerShell script:
+```powershell
+.\deploy-render.ps1
+```
+
+### Option 3: Deploy via Python Script
+
+Run the Python deployment script:
+```bash
+python deploy-to-render.py
+```
+
+## Database Migration
+
+After deployment, if you have existing SQLite data:
+
+1. **Set Environment Variables**
    ```bash
-   export DATABASE_URL="your-postgres-connection-string"
+   export DATABASE_URL="your_postgres_connection_string"
+   export SQLITE_DB_PATH="fund_manager.db"
    ```
 
-2. **Run migration**:
+2. **Run Migration**
    ```bash
-   python migrate_data.py --confirm
+   python migrate_data.py
    ```
 
-## 🔍 Monitoring & Testing
+## Environment Variables
 
-1. **Health Check**: Your app includes a health check at `/health`
-2. **Logs**: View logs in Render Dashboard → Your Service → Logs
-3. **Database**: Monitor database in Render Dashboard → Your Database
+The following environment variables are automatically set:
 
-## 🔐 Security Checklist
+- `FLASK_ENV=production`
+- `SESSION_COOKIE_SECURE=true`
+- `FLASK_DEBUG=false`
+- `SECRET_KEY` (auto-generated)
+- `DATABASE_URL` (from PostgreSQL database)
 
-- ✅ CSRF protection enabled
-- ✅ Password hashing implemented
-- ✅ Secure session cookies
-- ✅ Security headers configured
-- ✅ Environment variables for secrets
+## Health Check
 
-## 🎯 Default Login
+Your app includes a health check endpoint at `/health` that Render uses to monitor the service.
 
-- **Username**: `admin1`
-- **Password**: `admin123`
+## Default Admin Account
 
-**⚠️ Important**: Change the default password immediately after deployment!
+The app automatically creates a default admin account:
+- Username: `admin1`
+- Password: `admin123`
 
-## 🚨 Troubleshooting
+**Important**: Change these credentials after first login!
 
-### Common Issues:
+## Troubleshooting
 
-1. **Build Fails**:
-   - Check `requirements.txt` is correct
-   - Verify Python version in `runtime.txt`
+### Common Issues
 
-2. **Database Connection Errors**:
-   - Verify DATABASE_URL is set correctly
+1. **Build Failures**
+   - Check `requirements.txt` for correct dependencies
+   - Ensure all files are committed to GitHub
+
+2. **Database Connection Issues**
+   - Verify `DATABASE_URL` is set correctly
    - Check if PostgreSQL service is running
 
-3. **App Won't Start**:
-   - Check logs in Render Dashboard
-   - Verify health check endpoint `/health`
+3. **Service Not Starting**
+   - Check logs in Render dashboard
+   - Verify `gunicorn_config.py` settings
 
-### Getting Help:
+### Logs
 
-1. Check Render logs first
-2. Verify environment variables
-3. Test health check endpoint
-4. Review database connection
+View logs in the Render dashboard:
+- Go to your service
+- Click "Logs" tab
+- Check for error messages
 
-## 📞 Support
+## Post-Deployment
+
+1. **Test the Application**
+   - Visit your app URL
+   - Login with admin credentials
+   - Test all major features
+
+2. **Security**
+   - Change default admin password
+   - Review environment variables
+   - Enable HTTPS (automatic on Render)
+
+3. **Monitoring**
+   - Set up alerts in Render dashboard
+   - Monitor database performance
+   - Check health check endpoint regularly
+
+## Support
 
 If you encounter issues:
-1. Check the Render documentation
+1. Check Render documentation
 2. Review application logs
-3. Test locally first with PostgreSQL
+3. Verify all configuration files
+4. Test locally with PostgreSQL
+
+## Cost
+
+- **Free Tier**: Includes 750 hours/month for web services and 90 days for databases
+- **Paid Plans**: Start at $7/month for persistent databases and additional resources
 
 ---
 
-## 🎉 You're All Set!
-
-Once deployed, your application will be available at:
-`https://your-service-name.onrender.com`
-
-The database will be automatically backed up by Render, and your application will be production-ready! 🚀
+**Happy Deploying! 🚀**

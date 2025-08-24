@@ -286,5 +286,14 @@
         closeDeleteModal();
       }
     });
+    
+    // Debug function to check if delete is working
+    function debugDelete(contributorId) {
+      console.log('Attempting to delete contributor:', contributorId);
+      const form = document.getElementById('deleteForm');
+      console.log('Form action:', form.action);
+      console.log('Form method:', form.method);
+      return true;
+    }
   </script>
 {% endblock %}
