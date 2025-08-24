@@ -326,7 +326,7 @@
                 {% endwith %}
 
                 <form method="post" class="space-y-6" id="login-form">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    {{ csrf_field() }}
                     
                     <!-- Username Field -->
                     <div class="input-group">

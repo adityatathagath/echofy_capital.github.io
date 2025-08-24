@@ -253,7 +253,7 @@
           Cancel
         </button>
         <form id="deleteForm" method="POST" style="display: inline;">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+          {{ csrf_field() }}
           <button type="submit" class="btn-danger">
             <i class="fas fa-trash mr-1"></i>Delete Contributor
           </button>

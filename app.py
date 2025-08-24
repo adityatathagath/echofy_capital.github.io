@@ -492,7 +492,9 @@ def csrf_field():
     token = generate_csrf_token()
     return Markup(f'<input type="hidden" name="csrf_token" value="{token}">')
 
+# Register CSRF functions in Jinja environment
 app.jinja_env.globals["csrf_field"] = csrf_field
+app.jinja_env.globals["csrf_token"] = generate_csrf_token
 
 @app.before_request
 def csrf_protect_and_init():
