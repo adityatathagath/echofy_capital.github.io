@@ -161,11 +161,11 @@
   <!-- Include Chart.js from CDN -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script>
-    // Parse chart data passed from Flask
-    const chartDates = {{ chart_dates|safe }};
-    const chartCumSum = {{ chart_cum_sum|safe }};
-    const depositTotal = {{ deposit_total }};
-    const tradeTotal = {{ trade_total }};
+    // Parse chart data passed from Flask with proper JSON encoding
+    const chartDates = {{ (chart_dates or [])|tojson }};
+    const chartCumSum = {{ (chart_cum_sum or [])|tojson }};
+    const depositTotal = {{ deposit_total or 0 }};
+    const tradeTotal = {{ trade_total or 0 }};
     
     // Chart.js default config for dark mode
     Chart.defaults.color = getComputedStyle(document.documentElement).getPropertyValue('--tw-text-opacity') ? '#374151' : '#9CA3AF';

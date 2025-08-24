@@ -4,3 +4,6 @@ instance/
 .env
 *.sqlite3
 app.log
+
+# VS Code settings (keep for template syntax highlighting)
+# .vscode/
