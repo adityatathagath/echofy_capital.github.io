@@ -1,17 +1,16 @@
 # app.py
-from flask import Flask, render_template, request, redirect, url_for, session, flash, Response, g
+from flask import Flask, render_template, request, redirect, url_for, session, flash, Response, g, abort
 from functools import wraps
 import sqlite3
 import csv
 import io
 import json
 import logging
+import os
+import secrets
 from datetime import datetime, date
-import matplotlib
-matplotlib.use("Agg")  # Use a non-GUI backend for rendering figures
-from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
-import matplotlib.pyplot as plt
-import base64
+from markupsafe import Markup
+from werkzeug.security import generate_password_hash, check_password_hash
 
 # ----------------------------
 # Setup Logging
@@ -27,8 +26,11 @@ logging.basicConfig(
 # ----------------------------
 class DatabaseManager:
     def __init__(self, db_name="fund_manager.db"):
-        self.conn = sqlite3.connect(db_name, check_same_thread=False)
+        # One connection per request (thread-safe) via Flask g
+        self.conn = sqlite3.connect(db_name)
         self.conn.row_factory = sqlite3.Row  # rows behave like dictionaries
+        # Enforce foreign keys
+        self.conn.execute("PRAGMA foreign_keys = ON")
         self.create_tables()
 
     def create_tables(self):
@@ -46,8 +48,15 @@ class DatabaseManager:
         c.execute("SELECT COUNT(*) as count FROM users")
         count = c.fetchone()["count"]
         if count == 0:
-            c.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", ("admin1", "admin1", "admin"))
-            c.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", ("admin2", "admin2", "admin"))
+            # Create default admin accounts with hashed passwords. Change these in production.
+            c.execute(
+                "INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
+                ("admin1", generate_password_hash("admin1"), "admin"),
+            )
+            c.execute(
+                "INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
+                ("admin2", generate_password_hash("admin2"), "admin"),
+            )
             logging.info("Inserted default admin accounts.")
         # Contributors table
         c.execute("""
@@ -91,6 +100,21 @@ class DatabaseManager:
                 comment TEXT
             )
         """)
+        # Ensure extended trade columns exist (SQLite simple migration)
+        c.execute("PRAGMA table_info(trades)")
+        trade_cols = {row[1] for row in c.fetchall()}
+        def _ensure_trade_col(name, decl):
+            if name not in trade_cols:
+                c.execute(f"ALTER TABLE trades ADD COLUMN {name} {decl}")
+        _ensure_trade_col("quantity", "REAL")
+        _ensure_trade_col("entry_price", "REAL")
+        _ensure_trade_col("exit_price", "REAL")
+        _ensure_trade_col("side", "TEXT")
+        _ensure_trade_col("instrument", "TEXT")
+        _ensure_trade_col("broker", "TEXT")
+        _ensure_trade_col("trade_ref", "TEXT")
+        _ensure_trade_col("strategy", "TEXT")
+        _ensure_trade_col("tags", "TEXT")
         # Withdrawal Requests table
         c.execute("""
             CREATE TABLE IF NOT EXISTS withdrawal_requests (
@@ -111,7 +135,8 @@ class DatabaseManager:
     def add_user(self, username, password, role="user"):
         c = self.conn.cursor()
         try:
-            c.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", (username, password, role))
+            hashed = generate_password_hash(password)
+            c.execute("INSERT INTO users (username, password, role) VALUES (?, ?, ?)", (username, hashed, role))
             self.conn.commit()
             logging.info(f"Added user: {username} with role {role}")
             return c.lastrowid
@@ -120,7 +145,8 @@ class DatabaseManager:
 
     def update_user(self, user_id, username, password, role):
         c = self.conn.cursor()
-        c.execute("UPDATE users SET username=?, password=?, role=? WHERE id=?", (username, password, role, user_id))
+        hashed = generate_password_hash(password)
+        c.execute("UPDATE users SET username=?, password=?, role=? WHERE id=?", (username, hashed, role, user_id))
         self.conn.commit()
         logging.info(f"Updated user id {user_id}")
 
@@ -131,8 +157,29 @@ class DatabaseManager:
 
     def verify_user(self, username, password):
         c = self.conn.cursor()
-        c.execute("SELECT * FROM users WHERE username=? AND password=?", (username, password))
-        return c.fetchone()
+        c.execute("SELECT * FROM users WHERE username=?", (username,))
+        row = c.fetchone()
+        if not row:
+            return None
+        stored = row["password"] or ""
+        # Preferred: hashed verification
+        try:
+            if stored and check_password_hash(stored, password):
+                return row
+        except Exception:
+            # If stored is not a valid hash, fall back below
+            pass
+        # Legacy plaintext fallback: if matches, upgrade to hashed transparently
+        if password == stored:
+            try:
+                new_hashed = generate_password_hash(password)
+                c.execute("UPDATE users SET password=? WHERE id=?", (new_hashed, row["id"]))
+                self.conn.commit()
+                logging.info(f"Upgraded password hash for user id {row['id']}")
+            except Exception:
+                pass
+            return row
+        return None
 
     # Contributor functions:
     def add_contributor(self, name, ctype, login_username=None):
@@ -214,6 +261,19 @@ class DatabaseManager:
         self.conn.commit()
         logging.info(f"Updated trade id {trade_id}")
 
+    def update_trade_details(self, trade_id, **kwargs):
+        if not kwargs:
+            return
+        c = self.conn.cursor()
+        cols = []
+        vals = []
+        for k, v in kwargs.items():
+            cols.append(f"{k}=?")
+            vals.append(v)
+        vals.append(trade_id)
+        c.execute(f"UPDATE trades SET {', '.join(cols)} WHERE id=?", vals)
+        self.conn.commit()
+
     def get_all_transactions(self):
         c = self.conn.cursor()
         c.execute("SELECT * FROM transactions ORDER BY date")
@@ -278,11 +338,75 @@ class DatabaseManager:
     def close(self):
         self.conn.close()
 
+    # Admin helpers
+    def delete_user(self, user_id):
+        c = self.conn.cursor()
+        c.execute("DELETE FROM users WHERE id=?", (user_id,))
+        self.conn.commit()
+
+    def count_admins(self):
+        c = self.conn.cursor()
+        c.execute("SELECT COUNT(*) AS cnt FROM users WHERE role='admin'")
+        row = c.fetchone()
+        return row["cnt"] if row else 0
+
 # ----------------------------
 # Create the Flask App Instance
 # ----------------------------
 app = Flask(__name__)
-app.secret_key = "YOUR_SECRET_KEY"  # Replace with a secure key in production
+# Configure secret key and secure session cookie settings
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SECURE=bool(os.environ.get("SESSION_COOKIE_SECURE", "")),  # set in prod
+    SESSION_COOKIE_SAMESITE="Lax",
+    PERMANENT_SESSION_LIFETIME=60 * 60 * 8,  # 8 hours
+)
+
+# ----------------------------
+# CSRF Protection (lightweight)
+# ----------------------------
+def generate_csrf_token():
+    token = session.get("csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session["csrf_token"] = token
+    return token
+
+def csrf_field():
+    token = generate_csrf_token()
+    return Markup(f'<input type="hidden" name="csrf_token" value="{token}">')
+
+app.jinja_env.globals["csrf_field"] = csrf_field
+
+@app.before_request
+def csrf_protect_and_init():
+    # Ensure CSRF token exists for all sessions
+    if request.method == "GET":
+        generate_csrf_token()
+        return
+    # Validate CSRF token on modifying requests
+    if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+        form_token = request.form.get("csrf_token")
+        session_token = session.get("csrf_token")
+        if not form_token or not session_token or form_token != session_token:
+            abort(400, description="Invalid CSRF token")
+
+@app.after_request
+def set_security_headers(resp: Response):
+    resp.headers.setdefault("X-Frame-Options", "DENY")
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    # Allow CDN scripts used by templates; adjust as needed
+    csp = (
+        "default-src 'self'; "
+        "img-src 'self' data: https:; "
+        "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; "
+        "script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; "
+        "connect-src 'self'; frame-ancestors 'none'"
+    )
+    resp.headers.setdefault("Content-Security-Policy", csp)
+    return resp
 
 # ----------------------------
 # Per-Request Database Connection
@@ -335,6 +459,7 @@ def login():
         db_instance = get_db()
         user = db_instance.verify_user(username, password)
         if user:
+            session.clear()
             session["user_id"] = user["id"]
             session["username"] = user["username"]
             session["role"] = user["role"]
@@ -424,6 +549,12 @@ def add_contributor():
         if not name or not login_username or not login_password:
             flash("Please fill in the contributor name and login credentials.")
             return redirect(url_for("add_contributor"))
+        # Validate date
+        try:
+            datetime.strptime(deposit_date, "%Y-%m-%d")
+        except Exception:
+            flash("Please enter a valid deposit date (YYYY-MM-DD).")
+            return redirect(url_for("add_contributor"))
         try:
             deposit = float(deposit_str)
             if deposit <= 0:
@@ -454,6 +585,11 @@ def add_funds():
         deposit_date = request.form.get("deposit_date", "").strip()
         if not name:
             flash("Please select a contributor.")
+            return redirect(url_for("add_funds"))
+        try:
+            datetime.strptime(deposit_date, "%Y-%m-%d")
+        except Exception:
+            flash("Please enter a valid deposit date (YYYY-MM-DD).")
             return redirect(url_for("add_funds"))
         try:
             deposit = float(deposit_str)
@@ -487,23 +623,82 @@ def record_trade():
         pnl_str = request.form.get("pnl", "").strip()
         charges_str = request.form.get("charges", "").strip()
         comment = request.form.get("comment", "").strip()
+        # Extended fields
+        side = request.form.get("side", "").strip().lower()
+        qty_str = request.form.get("quantity", "").strip()
+        entry_str = request.form.get("entry_price", "").strip()
+        exit_str = request.form.get("exit_price", "").strip()
+        instrument = request.form.get("instrument", "").strip()
+        broker = request.form.get("broker", "").strip()
+        trade_ref = request.form.get("trade_ref", "").strip()
+        strategy = request.form.get("strategy", "").strip()
+        tags = request.form.get("tags", "").strip()
         if not asset:
             flash("Please enter the asset traded.")
             return redirect(url_for("record_trade"))
         try:
-            pnl = float(pnl_str)
-        except ValueError:
-            flash("Please enter a valid PnL amount.")
+            datetime.strptime(trade_date, "%Y-%m-%d")
+        except Exception:
+            flash("Please enter a valid trade date (YYYY-MM-DD).")
             return redirect(url_for("record_trade"))
+        pnl = None
+        if pnl_str:
+            try:
+                pnl = float(pnl_str)
+            except ValueError:
+                flash("Please enter a valid PnL amount.")
+                return redirect(url_for("record_trade"))
         try:
             charges = float(charges_str)
         except ValueError:
             flash("Please enter a valid charges amount.")
             return redirect(url_for("record_trade"))
+        quantity = None
+        entry_price = None
+        exit_price = None
+        if qty_str:
+            try:
+                quantity = float(qty_str)
+            except ValueError:
+                flash("Please enter a numeric quantity.")
+                return redirect(url_for("record_trade"))
+        if entry_str:
+            try:
+                entry_price = float(entry_str)
+            except ValueError:
+                flash("Please enter a valid entry price.")
+                return redirect(url_for("record_trade"))
+        if exit_str:
+            try:
+                exit_price = float(exit_str)
+            except ValueError:
+                flash("Please enter a valid exit price.")
+                return redirect(url_for("record_trade"))
+        if pnl is None and all(v is not None for v in (quantity, entry_price, exit_price)):
+            if side not in ("long", "short"):
+                flash("Please choose side (long/short) when using entry/exit/quantity.")
+                return redirect(url_for("record_trade"))
+            pnl = (exit_price - entry_price) * quantity if side == "long" else (entry_price - exit_price) * quantity
+        if pnl is None:
+            flash("Provide PnL or (side, quantity, entry, exit) to compute it.")
+            return redirect(url_for("record_trade"))
         net_pnl = pnl - charges
         commission = 0.3 * net_pnl if net_pnl > 0 else 0.0
         net_profit_after_commission = net_pnl - commission
-        db_instance.add_trade(trade_date, asset, pnl, charges, commission, net_pnl, net_profit_after_commission, comment)
+        trade_id = db_instance.add_trade(trade_date, asset, pnl, charges, commission, net_pnl, net_profit_after_commission, comment)
+        # Save extended fields
+        db_instance.update_trade_details(
+            trade_id,
+            quantity=quantity,
+            entry_price=entry_price,
+            exit_price=exit_price,
+            side=side,
+            instrument=instrument,
+            broker=broker,
+            trade_ref=trade_ref,
+            strategy=strategy,
+            tags=tags,
+        )
         # Distribute net profit among contributors proportionally.
         contributors = db_instance.get_all_contributors()
         total_eligible = 0.0
@@ -534,6 +729,11 @@ def withdraw_money():
         withdraw_date = request.form.get("withdraw_date", "").strip()
         amt_str = request.form.get("amount", "").strip()
         comment = request.form.get("comment", "").strip()
+        try:
+            datetime.strptime(withdraw_date, "%Y-%m-%d")
+        except Exception:
+            flash("Enter a valid withdrawal date (YYYY-MM-DD).")
+            return redirect(url_for("withdraw_money"))
         try:
             withdraw_amt = float(amt_str)
             if withdraw_amt <= 0:
@@ -626,6 +826,11 @@ def request_withdrawal():
         amt_str = request.form.get("amount", "").strip()
         comment = request.form.get("comment", "").strip()
         try:
+            datetime.strptime(req_date, "%Y-%m-%d")
+        except Exception:
+            flash("Enter a valid request date (YYYY-MM-DD).")
+            return redirect(url_for("request_withdrawal"))
+        try:
             amount = float(amt_str)
             if amount <= 0:
                 raise ValueError
@@ -702,6 +907,17 @@ def trade_history():
         trades = [trade for trade in all_trades if (trade["trade_date"], trade["asset"]) in my_trade_keys]
     formatted_trades = []
     for trade in trades:
+        details_parts = []
+        if trade["side"] or trade["quantity"] or trade["entry_price"] or trade["exit_price"]:
+            side_txt = trade["side"] or ""
+            qty_txt = f"{trade['quantity']}" if trade["quantity"] is not None else ""
+            entry_txt = f"@{trade['entry_price']}" if trade["entry_price"] is not None else ""
+            exit_txt = f"-> {trade['exit_price']}" if trade["exit_price"] is not None else ""
+            details_parts.append(f"{side_txt} {qty_txt} {entry_txt} {exit_txt}".strip())
+        for k, label in (("instrument", "Instr"), ("broker", "Broker"), ("trade_ref", "Ref"), ("strategy", "Strategy"), ("tags", "Tags")):
+            if trade[k]:
+                details_parts.append(f"{label}: {trade[k]}")
+        details_text = " | ".join([p for p in details_parts if p])
         formatted_trades.append({
             "id": trade["id"],
             "trade_date": trade["trade_date"],
@@ -711,16 +927,71 @@ def trade_history():
             "net_pnl": f"{trade['net_pnl']:.2f}",
             "commission": f"{trade['commission']:.2f}",
             "net_profit_after_commission": f"{trade['net_profit_after_commission']:.2f}",
-            "comment": trade["comment"]
+            "comment": trade["comment"],
+            "details": details_text
         })
     return render_template("trade_history.html", trades=formatted_trades, role=role)
+
+# Add User (admin only)
+@app.route("/add_user", methods=["GET", "POST"])
+@login_required
+@admin_required
+def add_user():
+    db_instance = get_db()
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "").strip()
+        role = request.form.get("role", "user").strip()
+        if not username or not password:
+            flash("Username and password are required.")
+            return redirect(url_for("add_user"))
+        try:
+            db_instance.add_user(username, password, role=role)
+            flash("User added.")
+            return redirect(url_for("manage_users"))
+        except Exception as e:
+            flash(str(e))
+            return redirect(url_for("add_user"))
+    return render_template("add_user.html")
+
+# Delete User (admin only)
+@app.route("/delete_user/<int:user_id>", methods=["POST"])
+@login_required
+@admin_required
+def delete_user(user_id):
+    db_instance = get_db()
+    # Prevent self-delete
+    if user_id == session.get("user_id"):
+        flash("You cannot delete your own account.")
+        return redirect(url_for("manage_users"))
+    users = db_instance.get_all_users()
+    target = next((u for u in users if u["id"] == user_id), None)
+    if not target:
+        flash("User not found.")
+        return redirect(url_for("manage_users"))
+    if target["role"] == "admin" and db_instance.count_admins() <= 1:
+        flash("Cannot delete the last admin.")
+        return redirect(url_for("manage_users"))
+    db_instance.delete_user(user_id)
+    flash("User deleted.")
+    return redirect(url_for("manage_users"))
 
 # Export Transactions CSV
 @app.route("/export_transactions")
 @login_required
 def export_transactions():
     db_instance = get_db()
-    transactions = db_instance.get_all_transactions()
+    role = session.get("role")
+    if role == "admin":
+        transactions = db_instance.get_all_transactions()
+        filename = "transactions.csv"
+    else:
+        contrib = db_instance.get_contributor_by_login(session.get("username"))
+        if not contrib:
+            flash("No transactions to export.")
+            return redirect(url_for("dashboard"))
+        transactions = db_instance.get_transactions_for_contributor(contrib["id"])
+        filename = f"transactions_{session.get('username')}.csv"
     if not transactions:
         flash("No transactions to export.")
         return redirect(url_for("dashboard"))
@@ -728,32 +999,75 @@ def export_transactions():
     cw = csv.writer(si)
     cw.writerow(["ID", "Contributor ID", "Date", "Type", "Amount", "Asset", "Allocated Charges", "Comment"])
     for txn in transactions:
-        cw.writerow([txn["id"], txn["contributor_id"], txn["date"], txn["type"],
-                     txn["amount"], txn["asset"], txn["allocated_charges"], txn["comment"]])
-    return make_csv_response(si.getvalue(), "transactions.csv")
+        cw.writerow([
+            txn["id"],
+            txn["contributor_id"],
+            sanitize_csv_value(txn["date"]),
+            sanitize_csv_value(txn["type"]),
+            txn["amount"],
+            sanitize_csv_value(txn["asset"]),
+            txn["allocated_charges"],
+            sanitize_csv_value(txn["comment"]),
+        ])
+    return make_csv_response(si.getvalue(), filename)
 
 # Export Trades CSV
 @app.route("/export_trades")
 @login_required
 def export_trades():
     db_instance = get_db()
-    trades = db_instance.get_all_trades()
+    role = session.get("role")
+    if role == "admin":
+        trades = db_instance.get_all_trades()
+        filename = "trades.csv"
+    else:
+        contrib = db_instance.get_contributor_by_login(session.get("username"))
+        if not contrib:
+            trades = []
+        else:
+            all_trades = db_instance.get_all_trades()
+            my_txns = db_instance.get_transactions_for_contributor(contrib["id"])
+            my_trade_keys = {(txn["date"], txn["asset"]) for txn in my_txns if txn["type"]=="trade"}
+            trades = [trade for trade in all_trades if (trade["trade_date"], trade["asset"]) in my_trade_keys]
+        filename = f"trades_{session.get('username')}.csv"
     if not trades:
         flash("No trades to export.")
         return redirect(url_for("dashboard"))
     si = io.StringIO()
     cw = csv.writer(si)
-    cw.writerow(["ID", "Trade Date", "Asset", "PnL", "Charges", "Commission", "Net PnL", "Net Profit After Commission", "Comment"])
+    cw.writerow(["ID", "Trade Date", "Asset", "PnL", "Charges", "Commission", "Net PnL", "Net Profit After Commission", "Comment", "Side", "Quantity", "Entry", "Exit", "Instrument", "Broker", "Ref", "Strategy", "Tags"])
     for trade in trades:
-        cw.writerow([trade["id"], trade["trade_date"], trade["asset"], trade["pnl"],
-                     trade["charges"], trade["commission"], trade["net_pnl"],
-                     trade["net_profit_after_commission"], trade["comment"]])
-    return make_csv_response(si.getvalue(), "trades.csv")
+        cw.writerow([
+            trade["id"],
+            sanitize_csv_value(trade["trade_date"]),
+            sanitize_csv_value(trade["asset"]),
+            trade["pnl"],
+            trade["charges"],
+            trade["commission"],
+            trade["net_pnl"],
+            trade["net_profit_after_commission"],
+            sanitize_csv_value(trade["comment"]),
+            sanitize_csv_value(trade["side"]),
+            trade["quantity"],
+            trade["entry_price"],
+            trade["exit_price"],
+            sanitize_csv_value(trade["instrument"]),
+            sanitize_csv_value(trade["broker"]),
+            sanitize_csv_value(trade["trade_ref"]),
+            sanitize_csv_value(trade["strategy"]),
+            sanitize_csv_value(trade["tags"]),
+        ])
+    return make_csv_response(si.getvalue(), filename)
 
 def make_csv_response(csv_data, filename):
     output = Response(csv_data, mimetype="text/csv")
     output.headers["Content-Disposition"] = f"attachment; filename={filename}"
     return output
+
+def sanitize_csv_value(value):
+    if isinstance(value, str) and value and value[0] in ("=", "+", "-", "@"):
+        return "'" + value
+    return value
 
 # Manage Contributors (admin only)
 @app.route("/manage_contributors")
@@ -877,6 +1191,11 @@ def edit_trade(trade_id):
         except ValueError:
             flash("Invalid PnL or Charges.")
             return redirect(url_for("edit_trade", trade_id=trade_id))
+        try:
+            datetime.strptime(trade_date, "%Y-%m-%d")
+        except Exception:
+            flash("Enter a valid trade date (YYYY-MM-DD).")
+            return redirect(url_for("edit_trade", trade_id=trade_id))
         comment = request.form.get("comment", "").strip()
         net_pnl = pnl - charges
         commission = 0.3 * net_pnl if net_pnl > 0 else 0.0
@@ -910,6 +1229,15 @@ def edit_transaction(txn_id):
         except ValueError:
             flash("Invalid amount or charges.")
             return redirect(url_for("edit_transaction", txn_id=txn_id))
+        # Validate date and type
+        try:
+            datetime.strptime(date_str, "%Y-%m-%d")
+        except Exception:
+            flash("Enter a valid date (YYYY-MM-DD).")
+            return redirect(url_for("edit_transaction", txn_id=txn_id))
+        if txn_type not in {"deposit", "trade", "withdrawal"}:
+            flash("Invalid transaction type.")
+            return redirect(url_for("edit_transaction", txn_id=txn_id))
         asset = request.form.get("asset", "").strip()
         comment = request.form.get("comment", "").strip()
         db_instance.update_transaction(txn_id, txn["contributor_id"], date_str, txn_type, amount, asset, allocated_charges, comment)
@@ -921,4 +1249,5 @@ def edit_transaction(txn_id):
 # Run the App
 # ----------------------------
 if __name__ == "__main__":
-    app.run(debug=True)
+    debug = bool(os.environ.get("FLASK_DEBUG"))
+    app.run(debug=debug)

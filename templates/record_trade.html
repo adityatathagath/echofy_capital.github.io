@@ -2,30 +2,224 @@
 {% extends "base.html" %}
 {% block title %}Record Trade{% endblock %}
 {% block content %}
-  <h2 class="text-xl font-bold mb-4">Record Trade</h2>
-  <form method="post" class="space-y-4 max-w-lg mx-auto">
-    <div>
-      <label class="block">Trade Date:</label>
-      <input type="date" name="trade_date" class="w-full border border-black p-2 rounded">
+  <div class="max-w-4xl mx-auto">
+    <!-- Page Header -->
+    <div class="text-center mb-8">
+      <h2 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+        <i class="fas fa-plus-circle mr-3 text-success"></i>
+        Record New Trade
+      </h2>
+      <p class="text-gray-600 dark:text-gray-400">Enter trade details to record a new position</p>
     </div>
-    <div>
-      <label class="block">Asset Traded:</label>
-      <input type="text" name="asset" class="w-full border border-black p-2 rounded">
+
+    <!-- Trade Form -->
+    <div class="card">
+      <form method="post" class="space-y-6" id="trade-form">
+        {{ csrf_field() }}
+        
+        <!-- Basic Trade Info -->
+        <div class="border-b border-gray-200 dark:border-gray-700 pb-6">
+          <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            <i class="fas fa-info-circle mr-2 text-primary-500"></i>
+            Basic Information
+          </h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label class="form-label">
+                <i class="fas fa-calendar mr-2"></i>Trade Date
+              </label>
+              <input type="date" name="trade_date" class="form-input" required>
+            </div>
+            <div>
+              <label class="form-label">
+                <i class="fas fa-chart-line mr-2"></i>Asset Traded
+              </label>
+              <input type="text" name="asset" class="form-input" placeholder="e.g., RELIANCE, NIFTY" required>
+            </div>
+          </div>
+        </div>
+
+        <!-- Position Details -->
+        <div class="border-b border-gray-200 dark:border-gray-700 pb-6">
+          <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            <i class="fas fa-chart-bar mr-2 text-primary-500"></i>
+            Position Details
+          </h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div>
+              <label class="form-label">
+                <i class="fas fa-arrows-alt-h mr-2"></i>Side
+              </label>
+              <select name="side" class="form-input">
+                <option value="">Select Side</option>
+                <option value="long">Long</option>
+                <option value="short">Short</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">
+                <i class="fas fa-balance-scale mr-2"></i>Quantity
+              </label>
+              <input type="number" name="quantity" class="form-input" placeholder="100" step="0.01">
+            </div>
+            <div>
+              <label class="form-label">
+                <i class="fas fa-sign-in-alt mr-2"></i>Entry Price
+              </label>
+              <input type="number" name="entry_price" class="form-input" placeholder="100.50" step="0.01">
+            </div>
+            <div>
+              <label class="form-label">
+                <i class="fas fa-sign-out-alt mr-2"></i>Exit Price
+              </label>
+              <input type="number" name="exit_price" class="form-input" placeholder="105.25" step="0.01">
+            </div>
+          </div>
+        </div>
+
+        <!-- Financial Details -->
+        <div class="border-b border-gray-200 dark:border-gray-700 pb-6">
+          <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            <i class="fas fa-rupee-sign mr-2 text-primary-500"></i>
+            Financial Details
+          </h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label class="form-label">
+                <i class="fas fa-chart-line mr-2"></i>PnL (₹)
+              </label>
+              <input type="number" name="pnl" class="form-input" placeholder="Will be calculated if using entry/exit" step="0.01">
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Leave empty to auto-calculate from entry/exit prices</p>
+            </div>
+            <div>
+              <label class="form-label">
+                <i class="fas fa-coins mr-2"></i>Charges (₹)
+              </label>
+              <input type="number" name="charges" class="form-input" placeholder="0.00" step="0.01" required>
+            </div>
+          </div>
+        </div>
+
+        <!-- Trade Metadata -->
+        <div class="border-b border-gray-200 dark:border-gray-700 pb-6">
+          <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+            <i class="fas fa-tags mr-2 text-primary-500"></i>
+            Additional Details
+          </h3>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div>
+              <label class="form-label">
+                <i class="fas fa-layer-group mr-2"></i>Instrument
+              </label>
+              <input type="text" name="instrument" class="form-input" placeholder="e.g., NSE:EQ, NSE:FUT">
+            </div>
+            <div>
+              <label class="form-label">
+                <i class="fas fa-building mr-2"></i>Broker
+              </label>
+              <input type="text" name="broker" class="form-input" placeholder="e.g., Zerodha, ICICI">
+            </div>
+            <div>
+              <label class="form-label">
+                <i class="fas fa-ticket-alt mr-2"></i>Trade Reference
+              </label>
+              <input type="text" name="trade_ref" class="form-input" placeholder="Ticket/Order ID">
+            </div>
+            <div>
+              <label class="form-label">
+                <i class="fas fa-chess mr-2"></i>Strategy
+              </label>
+              <input type="text" name="strategy" class="form-input" placeholder="e.g., Breakout, Swing">
+            </div>
+          </div>
+          <div class="mt-6">
+            <label class="form-label">
+              <i class="fas fa-hashtag mr-2"></i>Tags
+            </label>
+            <input type="text" name="tags" class="form-input" placeholder="e.g., intraday, news, earnings (comma-separated)">
+          </div>
+        </div>
+
+        <!-- Comments -->
+        <div>
+          <label class="form-label">
+            <i class="fas fa-comment mr-2"></i>Comments
+          </label>
+          <textarea name="comment" rows="3" class="form-input" placeholder="Additional notes about this trade..."></textarea>
+        </div>
+
+        <!-- Submit Button -->
+        <div class="flex justify-end space-x-4">
+          <a href="{{ url_for('dashboard') }}" class="btn-secondary">
+            <i class="fas fa-times"></i>
+            <span>Cancel</span>
+          </a>
+          <button type="submit" class="btn-primary" id="submit-btn">
+            <i class="fas fa-save"></i>
+            <span>Record Trade</span>
+          </button>
+        </div>
+      </form>
     </div>
-    <div>
-      <label class="block">PnL (Rs):</label>
-      <input type="text" name="pnl" class="w-full border border-black p-2 rounded">
+
+    <!-- Help Section -->
+    <div class="mt-8 card bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+      <div class="flex items-start">
+        <div class="flex-shrink-0">
+          <i class="fas fa-lightbulb text-blue-600 dark:text-blue-400 text-xl"></i>
+        </div>
+        <div class="ml-4">
+          <h4 class="text-lg font-semibold text-blue-900 dark:text-blue-100 mb-2">Pro Tips</h4>
+          <ul class="text-sm text-blue-800 dark:text-blue-200 space-y-1">
+            <li>• Fill in Side, Quantity, Entry Price, and Exit Price to auto-calculate PnL</li>
+            <li>• Or directly enter PnL if you prefer manual calculation</li>
+            <li>• Use Tags to categorize trades for better analysis</li>
+            <li>• Commission (30% of positive net PnL) is automatically calculated</li>
+          </ul>
+        </div>
+      </div>
     </div>
-    <div>
-      <label class="block">Charges (Rs):</label>
-      <input type="text" name="charges" class="w-full border border-black p-2 rounded">
-    </div>
-    <div>
-      <label class="block">Comments:</label>
-      <input type="text" name="comment" class="w-full border border-black p-2 rounded">
-    </div>
-    <div>
-      <input type="submit" value="Record Trade" class="w-full bg-green text-white p-2 rounded hover:bg-cyan">
-    </div>
-  </form>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const form = document.getElementById('trade-form');
+      const submitBtn = document.getElementById('submit-btn');
+      
+      // Form validation and loading state
+      form.addEventListener('submit', function() {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner animate-spin mr-2"></i>Recording...';
+      });
+
+      // Auto-calculate PnL when position details change
+      const sideField = form.querySelector('[name="side"]');
+      const qtyField = form.querySelector('[name="quantity"]');
+      const entryField = form.querySelector('[name="entry_price"]');
+      const exitField = form.querySelector('[name="exit_price"]');
+      const pnlField = form.querySelector('[name="pnl"]');
+
+      function calculatePnL() {
+        const side = sideField.value;
+        const qty = parseFloat(qtyField.value) || 0;
+        const entry = parseFloat(entryField.value) || 0;
+        const exit = parseFloat(exitField.value) || 0;
+
+        if (side && qty && entry && exit) {
+          let pnl = 0;
+          if (side === 'long') {
+            pnl = (exit - entry) * qty;
+          } else if (side === 'short') {
+            pnl = (entry - exit) * qty;
+          }
+          pnlField.value = pnl.toFixed(2);
+          pnlField.style.backgroundColor = pnl >= 0 ? '#f0fdf4' : '#fef2f2';
+        }
+      }
+
+      [sideField, qtyField, entryField, exitField].forEach(field => {
+        if (field) field.addEventListener('input', calculatePnL);
+      });
+    });
+  </script>
 {% endblock %}

@@ -2,29 +2,347 @@
 {% extends "base.html" %}
 {% block title %}Manage Users{% endblock %}
 {% block content %}
-  <h2 class="text-xl font-bold mb-4 text-center">Manage Users</h2>
-  <div class="overflow-x-auto">
-    <table class="min-w-full bg-white">
-      <thead>
-        <tr class="text-center">
-          <th class="py-2 px-4 border">ID</th>
-          <th class="py-2 px-4 border">Username</th>
-          <th class="py-2 px-4 border">Role</th>
-          <th class="py-2 px-4 border">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for user in users %}
-        <tr class="text-center">
-          <td class="py-2 px-4 border">{{ user.id }}</td>
-          <td class="py-2 px-4 border">{{ user.username }}</td>
-          <td class="py-2 px-4 border">{{ user.role }}</td>
-          <td class="py-2 px-4 border">
-            <a href="{{ url_for('edit_user', user_id=user.id) }}" class="text-blue hover:underline">Edit</a>
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div class="max-w-6xl mx-auto">
+    <!-- Page Header -->
+    <div class="flex flex-col md:flex-row justify-between items-center mb-8">
+      <div>
+        <h2 class="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+          <i class="fas fa-users mr-3 text-primary-500"></i>
+          User Management
+        </h2>
+        <p class="text-gray-600 dark:text-gray-400">Manage system users and their permissions</p>
+      </div>
+      <div class="flex flex-wrap gap-3 mt-4 md:mt-0">
+        <a href="{{ url_for('add_user') }}" class="btn-primary">
+          <i class="fas fa-user-plus"></i>
+          <span>Add User</span>
+        </a>
+        <button id="bulk-actions-btn" class="btn-secondary" style="display: none;">
+          <i class="fas fa-tasks"></i>
+          <span>Bulk Actions</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- User Statistics -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+      <div class="card">
+        <div class="flex items-center">
+          <div class="p-3 rounded-full bg-blue-100 dark:bg-blue-900/30">
+            <i class="fas fa-users text-blue-600 dark:text-blue-400 text-xl"></i>
+          </div>
+          <div class="ml-4">
+            <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Total Users</p>
+            <p class="text-2xl font-bold text-gray-900 dark:text-white">{{ users|length }}</p>
+          </div>
+        </div>
+      </div>
+      
+      <div class="card">
+        <div class="flex items-center">
+          <div class="p-3 rounded-full bg-green-100 dark:bg-green-900/30">
+            <i class="fas fa-user-shield text-green-600 dark:text-green-400 text-xl"></i>
+          </div>
+          <div class="ml-4">
+            <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Administrators</p>
+            <p class="text-2xl font-bold text-green-600 dark:text-green-400">
+              {{ users|selectattr("role", "eq", "admin")|list|length }}
+            </p>
+          </div>
+        </div>
+      </div>
+      
+      <div class="card">
+        <div class="flex items-center">
+          <div class="p-3 rounded-full bg-purple-100 dark:bg-purple-900/30">
+            <i class="fas fa-user text-purple-600 dark:text-purple-400 text-xl"></i>
+          </div>
+          <div class="ml-4">
+            <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Regular Users</p>
+            <p class="text-2xl font-bold text-purple-600 dark:text-purple-400">
+              {{ users|selectattr("role", "eq", "user")|list|length }}
+            </p>
+          </div>
+        </div>
+      </div>
+      
+      <div class="card">
+        <div class="flex items-center">
+          <div class="p-3 rounded-full bg-orange-100 dark:bg-orange-900/30">
+            <i class="fas fa-clock text-orange-600 dark:text-orange-400 text-xl"></i>
+          </div>
+          <div class="ml-4">
+            <p class="text-sm font-medium text-gray-600 dark:text-gray-400">Recently Added</p>
+            <p class="text-2xl font-bold text-orange-600 dark:text-orange-400">
+              {{ users|length if users|length <= 5 else 5 }}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Search and Filter Section -->
+    <div class="card mb-8">
+      <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+        <i class="fas fa-search mr-2"></i>Search & Filter
+      </h3>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label class="form-label text-sm">Search Users</label>
+          <div class="relative">
+            <input type="text" id="user-search" class="form-input text-sm pl-10" placeholder="Search by username...">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <i class="fas fa-search text-gray-400"></i>
+            </div>
+          </div>
+        </div>
+        <div>
+          <label class="form-label text-sm">Filter by Role</label>
+          <select id="role-filter" class="form-input text-sm">
+            <option value="">All Roles</option>
+            <option value="admin">Administrators</option>
+            <option value="user">Regular Users</option>
+          </select>
+        </div>
+        <div class="flex items-end">
+          <button id="clear-filters" class="btn-secondary text-sm h-10">
+            <i class="fas fa-times"></i>
+            <span>Clear Filters</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Users Table -->
+    <div class="card overflow-hidden">
+      {% if users %}
+        <div class="overflow-x-auto">
+          <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+            <thead class="bg-gray-50 dark:bg-gray-800">
+              <tr>
+                <th class="table-header w-12">
+                  <input type="checkbox" id="select-all" class="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded">
+                </th>
+                <th class="table-header">
+                  <i class="fas fa-user mr-1"></i>Username
+                </th>
+                <th class="table-header">
+                  <i class="fas fa-shield-alt mr-1"></i>Role
+                </th>
+                <th class="table-header">
+                  <i class="fas fa-calendar mr-1"></i>Created
+                </th>
+                <th class="table-header">
+                  <i class="fas fa-activity mr-1"></i>Status
+                </th>
+                <th class="table-header text-center">
+                  <i class="fas fa-cog mr-1"></i>Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody id="users-tbody" class="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
+              {% for user in users %}
+                <tr class="hover:bg-gray-50 dark:hover:bg-gray-800 user-row" 
+                    data-username="{{ user.username }}" 
+                    data-role="{{ user.role }}">
+                  <td class="table-cell">
+                    <input type="checkbox" class="user-checkbox h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded" 
+                           data-user-id="{{ user.id }}">
+                  </td>
+                  <td class="table-cell">
+                    <div class="flex items-center">
+                      <div class="flex-shrink-0 h-10 w-10">
+                        <div class="h-10 w-10 rounded-full bg-primary-100 dark:bg-primary-900/30 flex items-center justify-center">
+                          <span class="text-sm font-medium text-primary-600 dark:text-primary-400">
+                            {{ user.username[0].upper() }}
+                          </span>
+                        </div>
+                      </div>
+                      <div class="ml-4">
+                        <div class="text-sm font-bold text-gray-900 dark:text-white">
+                          {{ user.username }}
+                          {% if session.get('user_id') == user.id %}
+                            <span class="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300">
+                              You
+                            </span>
+                          {% endif %}
+                        </div>
+                        <div class="text-sm text-gray-500 dark:text-gray-400">
+                          User ID: {{ user.id }}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td class="table-cell">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium 
+                           {% if user.role == 'admin' %}bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300{% else %}bg-gray-100 text-gray-800 dark:bg-gray-900/50 dark:text-gray-300{% endif %}">
+                      <i class="fas {% if user.role == 'admin' %}fa-shield-alt{% else %}fa-user{% endif %} mr-1"></i>
+                      {{ user.role.title() }}
+                    </span>
+                  </td>
+                  <td class="table-cell">
+                    <div class="text-sm text-gray-900 dark:text-white">
+                      <i class="fas fa-calendar-alt mr-1 text-gray-400"></i>
+                      Recently
+                    </div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">
+                      New user
+                    </div>
+                  </td>
+                  <td class="table-cell">
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300">
+                      <div class="w-2 h-2 bg-green-400 rounded-full mr-1 animate-pulse"></div>
+                      Active
+                    </span>
+                  </td>
+                  <td class="table-cell text-center">
+                    <div class="flex justify-center space-x-2">
+                      <a href="{{ url_for('edit_user', user_id=user.id) }}" 
+                         class="text-primary-600 hover:text-primary-900 dark:text-primary-400 dark:hover:text-primary-300" 
+                         title="Edit User">
+                        <i class="fas fa-edit"></i>
+                      </a>
+                      {% if session.get('user_id') != user.id %}
+                        <form action="{{ url_for('delete_user', user_id=user.id) }}" method="post" class="inline">
+                          {{ csrf_field() }}
+                          <button type="submit" 
+                                  class="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300" 
+                                  title="Delete User"
+                                  onclick="return confirm('Delete user {{ user.username }}? This cannot be undone.');">
+                            <i class="fas fa-trash"></i>
+                          </button>
+                        </form>
+                      {% else %}
+                        <span class="text-gray-400" title="Cannot delete yourself">
+                          <i class="fas fa-trash"></i>
+                        </span>
+                      {% endif %}
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="text-center py-12">
+          <div class="mx-auto w-24 h-24 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4">
+            <i class="fas fa-users text-gray-400 text-3xl"></i>
+          </div>
+          <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">No users found</h3>
+          <p class="text-gray-500 dark:text-gray-400 mb-6">Get started by adding your first user</p>
+          <a href="{{ url_for('add_user') }}" class="btn-primary">
+            <i class="fas fa-user-plus mr-2"></i>Add User
+          </a>
+        </div>
+      {% endif %}
+    </div>
+
+    <!-- Bulk Actions Modal (hidden by default) -->
+    <div id="bulk-modal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden items-center justify-center z-50">
+      <div class="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+        <h3 class="text-lg font-bold text-gray-900 dark:text-white mb-4">Bulk Actions</h3>
+        <div class="space-y-3">
+          <button class="w-full text-left p-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" onclick="bulkAction('reset-password')">
+            <i class="fas fa-key mr-2"></i>Reset Passwords
+          </button>
+          <button class="w-full text-left p-3 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" onclick="bulkAction('change-role')">
+            <i class="fas fa-user-cog mr-2"></i>Change Role
+          </button>
+        </div>
+        <div class="mt-6 flex justify-end space-x-3">
+          <button onclick="closeBulkModal()" class="btn-secondary">Cancel</button>
+        </div>
+      </div>
+    </div>
   </div>
+
+  <script>
+    // Search and filter functionality
+    document.addEventListener('DOMContentLoaded', function() {
+      const userSearch = document.getElementById('user-search');
+      const roleFilter = document.getElementById('role-filter');
+      const clearFilters = document.getElementById('clear-filters');
+      const userRows = document.querySelectorAll('.user-row');
+      const selectAll = document.getElementById('select-all');
+      const userCheckboxes = document.querySelectorAll('.user-checkbox');
+      const bulkActionsBtn = document.getElementById('bulk-actions-btn');
+
+      function applyFilters() {
+        const searchValue = userSearch.value.toLowerCase();
+        const roleValue = roleFilter.value;
+
+        userRows.forEach(row => {
+          let show = true;
+
+          // Username filter
+          if (searchValue && !row.dataset.username.toLowerCase().includes(searchValue)) {
+            show = false;
+          }
+
+          // Role filter
+          if (roleValue && row.dataset.role !== roleValue) {
+            show = false;
+          }
+
+          row.style.display = show ? '' : 'none';
+        });
+      }
+
+      // Add event listeners
+      userSearch.addEventListener('input', applyFilters);
+      roleFilter.addEventListener('change', applyFilters);
+
+      // Clear filters
+      clearFilters.addEventListener('click', function() {
+        userSearch.value = '';
+        roleFilter.value = '';
+        userRows.forEach(row => {
+          row.style.display = '';
+        });
+      });
+
+      // Select all functionality
+      selectAll.addEventListener('change', function() {
+        userCheckboxes.forEach(checkbox => {
+          checkbox.checked = this.checked;
+        });
+        updateBulkActions();
+      });
+
+      // Individual checkbox changes
+      userCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+          const checkedBoxes = document.querySelectorAll('.user-checkbox:checked');
+          selectAll.checked = checkedBoxes.length === userCheckboxes.length;
+          selectAll.indeterminate = checkedBoxes.length > 0 && checkedBoxes.length < userCheckboxes.length;
+          updateBulkActions();
+        });
+      });
+
+      function updateBulkActions() {
+        const checkedBoxes = document.querySelectorAll('.user-checkbox:checked');
+        bulkActionsBtn.style.display = checkedBoxes.length > 0 ? 'inline-flex' : 'none';
+      }
+
+      // Bulk actions modal
+      bulkActionsBtn.addEventListener('click', function() {
+        document.getElementById('bulk-modal').classList.remove('hidden');
+        document.getElementById('bulk-modal').classList.add('flex');
+      });
+    });
+
+    function closeBulkModal() {
+      document.getElementById('bulk-modal').classList.add('hidden');
+      document.getElementById('bulk-modal').classList.remove('flex');
+    }
+
+    function bulkAction(action) {
+      const checkedBoxes = document.querySelectorAll('.user-checkbox:checked');
+      const userIds = Array.from(checkedBoxes).map(cb => cb.dataset.userId);
+      
+      alert(`Bulk ${action} for users: ${userIds.join(', ')}`);
+      closeBulkModal();
+    }
+  </script>
 {% endblock %}

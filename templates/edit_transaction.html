@@ -4,6 +4,7 @@
 {% block content %}
   <h2 class="text-xl font-bold mb-4 text-center">Edit Transaction</h2>
   <form method="post" class="space-y-4 max-w-lg mx-auto">
+    {{ csrf_field() }}
     <div>
       <label class="block">Date (YYYY-MM-DD):</label>
       <input type="text" name="date" value="{{ txn.date }}" class="w-full border border-black p-2 rounded">
