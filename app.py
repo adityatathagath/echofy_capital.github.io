@@ -13,14 +13,39 @@ from markupsafe import Markup
 from werkzeug.security import generate_password_hash, check_password_hash
 import urllib.parse
 
-# Try to import PostgreSQL support
+# Try to import database support
 try:
     import psycopg2
     from psycopg2.extras import RealDictCursor
     HAS_POSTGRES = True
 except ImportError:
     HAS_POSTGRES = False
-    logging.warning("PostgreSQL support not available. Using SQLite only.")
+    logging.warning("PostgreSQL support not available.")
+
+try:
+    import pymysql
+    HAS_MYSQL = True
+except ImportError:
+    HAS_MYSQL = False
+    logging.warning("MySQL support not available.")
+
+if not HAS_POSTGRES and not HAS_MYSQL:
+    logging.warning("Using SQLite only. For production, install psycopg2-binary or pymysql.")
+
+# ----------------------------
+# Database Connection Helper
+# ----------------------------
+def get_database_type(database_url=None):
+    """Determine database type from URL"""
+    if not database_url:
+        return 'sqlite'
+    
+    if database_url.startswith('postgresql://') or database_url.startswith('postgres://'):
+        return 'postgresql'
+    elif database_url.startswith('mysql://'):
+        return 'mysql'
+    else:
+        return 'sqlite'
 
 # ----------------------------
 # Setup Logging
