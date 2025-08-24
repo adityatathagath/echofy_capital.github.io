@@ -189,6 +189,30 @@ class DatabaseManager:
             )
         """)
         
+        # Trades table
+        c.execute(f"""
+            CREATE TABLE IF NOT EXISTS trades (
+                id {id_type},
+                trade_date {text_type},
+                asset {text_type},
+                pnl {real_type},
+                charges {real_type},
+                commission {real_type},
+                net_pnl {real_type},
+                net_profit_after_commission {real_type},
+                comment {text_type},
+                side {text_type},
+                quantity {real_type},
+                entry_price {real_type},
+                exit_price {real_type},
+                instrument {text_type},
+                broker {text_type},
+                trade_ref {text_type},
+                strategy {text_type},
+                tags {text_type}
+            )
+        """)
+        
         self.conn.commit()
         logging.info("Database tables created/updated successfully")
 
@@ -309,8 +333,8 @@ class DatabaseManager:
     def add_trade(self, trade_date, asset, pnl, charges, commission, net_pnl, net_profit_after_commission, comment):
         c = self.conn.cursor()
         c.execute("""
-            INSERT INTO trades (trade_date, asset, pnl, charges, commission, net_pnl, net_profit_after_commission, comment)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO trades (trade_date, asset, pnl, charges, commission, net_pnl, net_profit_after_commission, comment, side, quantity, entry_price, exit_price, instrument, broker, trade_ref, strategy, tags)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)
         """, (trade_date, asset, pnl, charges, commission, net_pnl, net_profit_after_commission, comment))
         self.conn.commit()
         trade_id = c.lastrowid
@@ -423,19 +447,26 @@ class DatabaseManager:
             # Get contributor details first
             c.execute("SELECT login_username FROM contributors WHERE id=?", (contributor_id,))
             contributor = c.fetchone()
-            if contributor and contributor.get("login_username"):
-                # Delete associated user account if exists
-                c.execute("DELETE FROM users WHERE username=?", (contributor["login_username"],))
-                logging.info(f"Deleted user account for contributor {contributor_id}")
             
             # Delete associated transactions first (foreign key)
             c.execute("DELETE FROM transactions WHERE contributor_id=?", (contributor_id,))
+            logging.info(f"Deleted transactions for contributor {contributor_id}")
+            
             # Delete associated withdrawal requests
             c.execute("DELETE FROM withdrawal_requests WHERE contributor_id=?", (contributor_id,))
+            logging.info(f"Deleted withdrawal requests for contributor {contributor_id}")
+            
+            # Delete associated user account if exists
+            if contributor and contributor.get("login_username"):
+                c.execute("DELETE FROM users WHERE username=?", (contributor["login_username"],))
+                logging.info(f"Deleted user account for contributor {contributor_id}")
+            
             # Delete the contributor
             c.execute("DELETE FROM contributors WHERE id=?", (contributor_id,))
+            logging.info(f"Deleted contributor {contributor_id}")
+            
             self.conn.commit()
-            logging.info(f"Deleted contributor id {contributor_id} and all associated data")
+            logging.info(f"Successfully deleted contributor id {contributor_id} and all associated data")
             return True
         except Exception as e:
             self.conn.rollback()
@@ -1033,46 +1064,89 @@ def detailed_summary():
 @app.route("/trade_history")
 @login_required
 def trade_history():
-    db_instance = get_db()
-    role = session.get("role")
-    if role == "admin":
-        trades = db_instance.get_all_trades()
-    else:
-        contrib = db_instance.get_contributor_by_login(session.get("username"))
-        if not contrib:
-            flash("No contributor profile found for your account.")
-            trades = []
+    try:
+        db_instance = get_db()
+        role = session.get("role")
+        
+        if role == "admin":
+            try:
+                trades = db_instance.get_all_trades()
+                logging.info(f"Admin: Retrieved {len(trades)} trades")
+            except Exception as e:
+                logging.error(f"Error getting trades for admin: {str(e)}")
+                trades = []
         else:
-            all_trades = db_instance.get_all_trades()
-            my_txns = db_instance.get_transactions_for_contributor(contrib["id"])
-            my_trade_keys = {(txn["date"], txn["asset"]) for txn in my_txns if txn["type"]=="trade"}
-            trades = [trade for trade in all_trades if (trade["trade_date"], trade["asset"]) in my_trade_keys]
-    formatted_trades = []
-    for trade in trades:
-        details_parts = []
-        if trade["side"] or trade["quantity"] or trade["entry_price"] or trade["exit_price"]:
-            side_txt = trade["side"] or ""
-            qty_txt = f"{trade['quantity']}" if trade["quantity"] is not None else ""
-            entry_txt = f"@{trade['entry_price']}" if trade["entry_price"] is not None else ""
-            exit_txt = f"-> {trade['exit_price']}" if trade["exit_price"] is not None else ""
-            details_parts.append(f"{side_txt} {qty_txt} {entry_txt} {exit_txt}".strip())
-        for k, label in (("instrument", "Instr"), ("broker", "Broker"), ("trade_ref", "Ref"), ("strategy", "Strategy"), ("tags", "Tags")):
-            if trade[k]:
-                details_parts.append(f"{label}: {trade[k]}")
-        details_text = " | ".join([p for p in details_parts if p])
-        formatted_trades.append({
-            "id": trade["id"],
-            "trade_date": trade["trade_date"],
-            "asset": trade["asset"],
-            "pnl": f"{trade['pnl']:.2f}",
-            "charges": f"{trade['charges']:.2f}",
-            "net_pnl": f"{trade['net_pnl']:.2f}",
-            "commission": f"{trade['commission']:.2f}",
-            "net_profit_after_commission": f"{trade['net_profit_after_commission']:.2f}",
-            "comment": trade["comment"],
-            "details": details_text
-        })
-    return render_template("trade_history.html", trades=formatted_trades, role=role)
+            try:
+                contrib = db_instance.get_contributor_by_login(session.get("username"))
+                if not contrib:
+                    flash("No contributor profile found for your account.")
+                    trades = []
+                else:
+                    all_trades = db_instance.get_all_trades()
+                    my_txns = db_instance.get_transactions_for_contributor(contrib["id"])
+                    my_trade_keys = {(txn["date"], txn["asset"]) for txn in my_txns if txn["type"]=="trade"}
+                    trades = [trade for trade in all_trades if (trade["trade_date"], trade["asset"]) in my_trade_keys]
+                    logging.info(f"Contributor {contrib['name']}: Retrieved {len(trades)} trades from {len(all_trades)} total")
+            except Exception as e:
+                logging.error(f"Error getting trades for contributor: {str(e)}")
+                trades = []
+        
+        formatted_trades = []
+        for trade in trades:
+            try:
+                details_parts = []
+                
+                # Safely handle trade fields that might be None
+                side = trade.get("side") or ""
+                quantity = trade.get("quantity")
+                entry_price = trade.get("entry_price")
+                exit_price = trade.get("exit_price")
+                
+                if side or quantity or entry_price or exit_price:
+                    qty_txt = f"{quantity}" if quantity is not None else ""
+                    entry_txt = f"@{entry_price}" if entry_price is not None else ""
+                    exit_txt = f"-> {exit_price}" if exit_price is not None else ""
+                    details_parts.append(f"{side} {qty_txt} {entry_txt} {exit_txt}".strip())
+                
+                # Safely handle optional trade fields
+                optional_fields = [
+                    ("instrument", "Instr"), 
+                    ("broker", "Broker"), 
+                    ("trade_ref", "Ref"), 
+                    ("strategy", "Strategy"), 
+                    ("tags", "Tags")
+                ]
+                
+                for field, label in optional_fields:
+                    value = trade.get(field)
+                    if value:
+                        details_parts.append(f"{label}: {value}")
+                
+                details_text = " | ".join([p for p in details_parts if p])
+                
+                # Safely format numeric fields
+                formatted_trades.append({
+                    "id": trade.get("id", 0),
+                    "trade_date": trade.get("trade_date", ""),
+                    "asset": trade.get("asset", ""),
+                    "pnl": f"{trade.get('pnl', 0):.2f}",
+                    "charges": f"{trade.get('charges', 0):.2f}",
+                    "net_pnl": f"{trade.get('net_pnl', 0):.2f}",
+                    "commission": f"{trade.get('commission', 0):.2f}",
+                    "net_profit_after_commission": f"{trade.get('net_profit_after_commission', 0):.2f}",
+                    "comment": trade.get("comment", ""),
+                    "details": details_text
+                })
+            except Exception as e:
+                logging.error(f"Error formatting trade {trade.get('id', 'unknown')}: {str(e)}")
+                continue
+        
+        return render_template("trade_history.html", trades=formatted_trades, role=role)
+        
+    except Exception as e:
+        logging.error(f"Error in trade_history route: {str(e)}")
+        flash("An error occurred while loading trade history. Please try again.")
+        return redirect(url_for("dashboard"))
 
 # Add User (admin only)
 @app.route("/add_user", methods=["GET", "POST"])
@@ -1253,17 +1327,23 @@ def edit_contributor(contrib_id):
 @login_required
 @admin_required
 def delete_contributor_route(contrib_id):
-    db_instance = get_db()
     try:
+        logging.info(f"Delete contributor route called for ID: {contrib_id}")
+        
+        db_instance = get_db()
+        logging.info("Database instance obtained")
+        
         # Get contributor details for confirmation
         contributor = db_instance.get_contributor_by_id(contrib_id)
         if not contributor:
+            logging.error(f"Contributor {contrib_id} not found")
             flash("Contributor not found.", "error")
             return redirect(url_for("manage_contributors"))
         
-        logging.info(f"Attempting to delete contributor {contrib_id}: {contributor['name']}")
+        logging.info(f"Found contributor: {contributor['name']} (ID: {contrib_id})")
         
         # Use the delete method we added to DatabaseManager
+        logging.info("Calling delete_contributor method...")
         success = db_instance.delete_contributor(contrib_id)
         
         if success:
@@ -1274,8 +1354,8 @@ def delete_contributor_route(contrib_id):
             logging.error(f"Failed to delete contributor {contrib_id}")
             
     except Exception as e:
+        logging.error(f"Exception in delete_contributor_route: {str(e)}")
         flash(f"Error deleting contributor: {str(e)}", "error")
-        logging.error(f"Exception while deleting contributor {contrib_id}: {str(e)}")
         
     return redirect(url_for("manage_contributors"))
 
