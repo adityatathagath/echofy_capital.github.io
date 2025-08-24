@@ -117,7 +117,7 @@ Write-Host "   python app.py" -ForegroundColor Gray
 Write-Host "4. Deploy to Render with new DATABASE_URL" -ForegroundColor White
 Write-Host ""
 
-Write-Host "🎉 Your free database will be permanent and much better than Render's temporary solution!" -ForegroundColor Green
+Write-Host "🎉 Your free database will be permanent and much better than Renders temporary solution!" -ForegroundColor Green
 
 Write-Host ""
 Write-Host "Press any key to exit..." -ForegroundColor Gray
