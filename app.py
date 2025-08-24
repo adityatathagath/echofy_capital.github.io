@@ -1336,5 +1336,5 @@ def edit_transaction(txn_id):
 # Run the App
 # ----------------------------
 if __name__ == "__main__":
-    debug = True  # Enable debug mode to see detailed error messages
-    app.run(debug=debug, host='127.0.0.1', port=5000)
+    debug = bool(os.environ.get("FLASK_DEBUG"))
+    app.run(debug=debug)
