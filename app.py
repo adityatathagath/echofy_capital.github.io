@@ -63,18 +63,29 @@ class DatabaseManager:
     def __init__(self):
         # Determine database type from environment
         self.database_url = os.environ.get('DATABASE_URL')
-        self.is_postgres = self.database_url and self.database_url.startswith(('postgres://', 'postgresql://'))
+        self.is_postgres = False  # Default to False
         
-        if self.is_postgres and HAS_POSTGRES:
-            # PostgreSQL connection
-            # Handle both postgres:// and postgresql:// URLs
-            if self.database_url.startswith('postgres://'):
-                self.database_url = self.database_url.replace('postgres://', 'postgresql://', 1)
-            
-            self.conn = psycopg2.connect(self.database_url, cursor_factory=RealDictCursor)
-            self.conn.autocommit = False  # We'll handle transactions manually
-            logging.info("Connected to PostgreSQL database")
-        else:
+        if self.database_url and self.database_url.startswith(('postgres://', 'postgresql://')):
+            try:
+                # Ensure psycopg2 is available
+                import psycopg2
+                from psycopg2.extras import RealDictCursor
+                
+                # Handle both postgres:// and postgresql:// URLs
+                if self.database_url.startswith('postgres://'):
+                    self.database_url = self.database_url.replace('postgres://', 'postgresql://', 1)
+                
+                # Try to connect to PostgreSQL
+                self.conn = psycopg2.connect(self.database_url, cursor_factory=RealDictCursor)
+                self.conn.autocommit = False  # We'll handle transactions manually
+                self.is_postgres = True
+                logging.info("✅ Connected to PostgreSQL database")
+            except Exception as e:
+                logging.error(f"❌ PostgreSQL connection failed: {str(e)}")
+                logging.info("⚠️ Falling back to SQLite")
+                self.is_postgres = False
+        
+        if not self.is_postgres:
             # SQLite connection (fallback and local development)
             db_name = os.environ.get('DATABASE_PATH', 'fund_manager.db')
             self.conn = sqlite3.connect(db_name)
@@ -83,6 +94,7 @@ class DatabaseManager:
             self.conn.execute("PRAGMA foreign_keys = ON")
             logging.info(f"Connected to SQLite database: {db_name}")
         
+        logging.info(f"Database type: {'PostgreSQL' if self.is_postgres else 'SQLite'}")
         self.create_tables()
 
     def execute_query(self, query, params=None, fetch=False, fetchone=False):
@@ -272,16 +284,21 @@ class DatabaseManager:
 
     def verify_user(self, username, password):
         c = self.conn.cursor()
-        # Use %s for PostgreSQL parameterized queries
-        c.execute("SELECT * FROM users WHERE username = %s", (username,))
+        # Use different parameter style based on database type
+        param_style = "%s" if self.is_postgres else "?"
+        query = f"SELECT * FROM users WHERE username = {param_style}"
+        
+        c.execute(query, (username,))
         row = c.fetchone()
         if not row:
+            logging.warning(f"No user found with username: {username}")
             return None
             
         stored = row["password"] if row["password"] else ""
         
         # Log the verification attempt (but not the actual passwords)
         logging.info(f"Verifying user: {username}")
+        logging.info(f"Database type: {'PostgreSQL' if self.is_postgres else 'SQLite'}")
         logging.info(f"Stored password exists: {bool(stored)}")
         
         # First try hashed verification
