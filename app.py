@@ -13,39 +13,15 @@ from markupsafe import Markup
 from werkzeug.security import generate_password_hash, check_password_hash
 import urllib.parse
 
-# Try to import database support
-try:
-    import psycopg2
-    from psycopg2.extras import RealDictCursor
-    HAS_POSTGRES = True
-except ImportError:
-    HAS_POSTGRES = False
-    logging.warning("PostgreSQL support not available.")
-
-try:
-    import pymysql
-    HAS_MYSQL = True
-except ImportError:
-    HAS_MYSQL = False
-    logging.warning("MySQL support not available.")
-
-if not HAS_POSTGRES and not HAS_MYSQL:
-    logging.warning("Using SQLite only. For production, install psycopg2-binary or pymysql.")
+# Using SQLite as the primary database
+import sqlite3
 
 # ----------------------------
 # Database Connection Helper
 # ----------------------------
 def get_database_type(database_url=None):
-    """Determine database type from URL"""
-    if not database_url:
-        return 'sqlite'
-    
-    if database_url.startswith('postgresql://') or database_url.startswith('postgres://'):
-        return 'postgresql'
-    elif database_url.startswith('mysql://'):
-        return 'mysql'
-    else:
-        return 'sqlite'
+    """Always returns sqlite as we're using SQLite exclusively"""
+    return 'sqlite'
 
 # ----------------------------
 # Setup Logging
@@ -61,52 +37,13 @@ logging.basicConfig(
 # ----------------------------
 class DatabaseManager:
     def __init__(self):
-        # Determine database type from environment
-        self.database_url = os.environ.get('DATABASE_URL')
-        self.is_postgres = False  # Default to False
-        
-        if self.database_url:
-            # Log database URL with sensitive information redacted
-            logging.info(f"Database URL found: {self.database_url.split('@')[0]}@[REDACTED]")
-            
-            if self.database_url.startswith(('postgres://', 'postgresql://')):
-                try:
-                    # Ensure psycopg2 is available
-                    import psycopg2
-                    from psycopg2.extras import RealDictCursor
-                    
-                    # Handle both postgres:// and postgresql:// URLs
-                    if self.database_url.startswith('postgres://'):
-                        self.database_url = self.database_url.replace('postgres://', 'postgresql://', 1)
-                    
-                    # Try to connect to PostgreSQL
-                    self.conn = psycopg2.connect(self.database_url, cursor_factory=RealDictCursor)
-                    self.conn.autocommit = False  # We'll handle transactions manually
-                    self.is_postgres = True
-                    logging.info("✅ Connected to PostgreSQL database successfully")
-                except psycopg2.OperationalError as e:
-                    logging.error(f"❌ PostgreSQL connection failed (Operational Error): {str(e)}")
-                    logging.info("⚠️ Falling back to SQLite")
-                    self.is_postgres = False
-                except Exception as e:
-                    logging.error(f"❌ PostgreSQL connection failed (Unexpected Error): {str(e)}")
-                    logging.info("⚠️ Falling back to SQLite")
-                    self.is_postgres = False
-            else:
-                logging.error(f"❌ Unsupported database URL scheme: {self.database_url.split('://')[0]}")
-        else:
-            logging.warning("⚠️ No DATABASE_URL found in environment variables")
-        
-        if not self.is_postgres:
-            # SQLite connection (fallback and local development)
-            db_name = os.environ.get('DATABASE_PATH', 'fund_manager.db')
-            self.conn = sqlite3.connect(db_name)
-            self.conn.row_factory = sqlite3.Row
-            # Enforce foreign keys for SQLite
-            self.conn.execute("PRAGMA foreign_keys = ON")
-            logging.info(f"Connected to SQLite database: {db_name}")
-        
-        logging.info(f"Database type: {'PostgreSQL' if self.is_postgres else 'SQLite'}")
+        # SQLite connection
+        db_name = os.environ.get('DATABASE_PATH', 'fund_manager.db')
+        self.conn = sqlite3.connect(db_name)
+        self.conn.row_factory = sqlite3.Row
+        # Enforce foreign keys for SQLite
+        self.conn.execute("PRAGMA foreign_keys = ON")
+        logging.info(f"Connected to SQLite database: {db_name}")
         self.create_tables()
 
     def execute_query(self, query, params=None, fetch=False, fetchone=False):
