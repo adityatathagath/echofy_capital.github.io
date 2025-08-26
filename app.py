@@ -272,20 +272,30 @@ class DatabaseManager:
 
     def verify_user(self, username, password):
         c = self.conn.cursor()
-        c.execute("SELECT * FROM users WHERE username=?", (username,))
+        # Use %s for PostgreSQL parameterized queries
+        c.execute("SELECT * FROM users WHERE username = %s", (username,))
         row = c.fetchone()
         if not row:
             return None
-        stored = row["password"] or ""
-        # Preferred: hashed verification
+            
+        stored = row["password"] if row["password"] else ""
+        
+        # Log the verification attempt (but not the actual passwords)
+        logging.info(f"Verifying user: {username}")
+        logging.info(f"Stored password exists: {bool(stored)}")
+        
+        # First try hashed verification
         try:
             if stored and check_password_hash(stored, password):
+                logging.info("Password hash verification successful")
                 return row
-        except Exception:
-            # If stored is not a valid hash, fall back below
+        except Exception as e:
+            logging.error(f"Hash verification error: {str(e)}")
             pass
-        # Legacy plaintext fallback: if matches, upgrade to hashed transparently
+            
+        # Legacy plaintext fallback
         if password == stored:
+            logging.info("Plain text password matched, upgrading to hash")
             try:
                 new_hashed = generate_password_hash(password)
                 c.execute("UPDATE users SET password=? WHERE id=?", (new_hashed, row["id"]))
