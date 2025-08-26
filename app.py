@@ -65,25 +65,37 @@ class DatabaseManager:
         self.database_url = os.environ.get('DATABASE_URL')
         self.is_postgres = False  # Default to False
         
-        if self.database_url and self.database_url.startswith(('postgres://', 'postgresql://')):
-            try:
-                # Ensure psycopg2 is available
-                import psycopg2
-                from psycopg2.extras import RealDictCursor
-                
-                # Handle both postgres:// and postgresql:// URLs
-                if self.database_url.startswith('postgres://'):
-                    self.database_url = self.database_url.replace('postgres://', 'postgresql://', 1)
-                
-                # Try to connect to PostgreSQL
-                self.conn = psycopg2.connect(self.database_url, cursor_factory=RealDictCursor)
-                self.conn.autocommit = False  # We'll handle transactions manually
-                self.is_postgres = True
-                logging.info("✅ Connected to PostgreSQL database")
-            except Exception as e:
-                logging.error(f"❌ PostgreSQL connection failed: {str(e)}")
-                logging.info("⚠️ Falling back to SQLite")
-                self.is_postgres = False
+        if self.database_url:
+            # Log database URL with sensitive information redacted
+            logging.info(f"Database URL found: {self.database_url.split('@')[0]}@[REDACTED]")
+            
+            if self.database_url.startswith(('postgres://', 'postgresql://')):
+                try:
+                    # Ensure psycopg2 is available
+                    import psycopg2
+                    from psycopg2.extras import RealDictCursor
+                    
+                    # Handle both postgres:// and postgresql:// URLs
+                    if self.database_url.startswith('postgres://'):
+                        self.database_url = self.database_url.replace('postgres://', 'postgresql://', 1)
+                    
+                    # Try to connect to PostgreSQL
+                    self.conn = psycopg2.connect(self.database_url, cursor_factory=RealDictCursor)
+                    self.conn.autocommit = False  # We'll handle transactions manually
+                    self.is_postgres = True
+                    logging.info("✅ Connected to PostgreSQL database successfully")
+                except psycopg2.OperationalError as e:
+                    logging.error(f"❌ PostgreSQL connection failed (Operational Error): {str(e)}")
+                    logging.info("⚠️ Falling back to SQLite")
+                    self.is_postgres = False
+                except Exception as e:
+                    logging.error(f"❌ PostgreSQL connection failed (Unexpected Error): {str(e)}")
+                    logging.info("⚠️ Falling back to SQLite")
+                    self.is_postgres = False
+            else:
+                logging.error(f"❌ Unsupported database URL scheme: {self.database_url.split('://')[0]}")
+        else:
+            logging.warning("⚠️ No DATABASE_URL found in environment variables")
         
         if not self.is_postgres:
             # SQLite connection (fallback and local development)
